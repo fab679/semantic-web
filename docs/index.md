@@ -49,7 +49,8 @@ consumers read most get **bare friendly names** at runtime
 — the demo stack ships five. Unknown things stay honest full URIs.
 Everything round-trips through `/context.jsonld` (prefixes *and* term
 definitions), and typed values keep their types (`"2001-04-03"` stays a
-date).
+date). Every claim on this site is demonstrated with live output in
+[Verified claims](verification.md).
 
 **2. The description IS the data.** There is no schema file to compile,
 no build step, no cache to bust. Every request for "what does this graph

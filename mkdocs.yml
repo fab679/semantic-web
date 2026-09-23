@@ -39,6 +39,7 @@ nav:
       - How agents use this: for-agents.md
       - Agent tutorial (Together AI + MCP): agent-tutorial.md
   - Reference:
+      - Verified claims: verification.md
       - Complete feature list: features.md
       - Configuration reference: configuration.md
       - Architecture: architecture.md
