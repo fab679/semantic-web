@@ -3,7 +3,7 @@
 A complete, runnable tutorial (~200 lines of Python). The agent answers
 questions from the graph with **Together AI** doing the reasoning and the
 semantic-web **MCP server** providing every tool. Full source:
-[`examples/agent/agent.py`](https://github.com/fabisch/semantic-web/blob/master/examples/agent/agent.py).
+[`examples/agent/agent.py`](https://github.com/fab679/semantic-web/blob/master/examples/agent/agent.py).
 
 ## The architecture in one picture
 

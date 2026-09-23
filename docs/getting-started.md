@@ -3,7 +3,7 @@
 ## Run the stack
 
 ```sh
-git clone https://github.com/fabisch/semantic-web
+git clone https://github.com/fab679/semantic-web
 cd semantic-web
 docker compose up --build -d
 ```
@@ -97,4 +97,4 @@ cargo run -p semweb
 - Environment-configured: `SEMWEB_WRITE_TOKEN`, `SEMWEB_SECRET_KEY`
   (encrypts subscriber secrets at rest), `SEMWEB_REPLICA_COUNT/INDEX`
   (sharding), `SEMWEB_SHACL_PATH`, and more — see
-  [README](https://github.com/fabisch/semantic-web#readme).
+  [README](https://github.com/fab679/semantic-web#readme).
