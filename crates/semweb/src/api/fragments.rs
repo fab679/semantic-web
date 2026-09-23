@@ -38,13 +38,15 @@ pub async fn fragments(
     let page = state
         .store
         .pattern_fragment(
-            subject,
-            predicate,
-            object,
-            graph,
-            limit,
-            offset,
-            after.as_ref(),
+            crate::store::FragmentQuery {
+                subject,
+                predicate,
+                object,
+                graph,
+                limit,
+                offset,
+                after: after.as_ref(),
+            },
             Some(&state.cardinality),
         )
         .await

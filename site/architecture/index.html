@@ -1,0 +1,1834 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A live, agent-readable surface over RDF — Triple Pattern Fragments, live self-description, and WebSub push. Plain HTTP only.">
+      
+      
+      
+        <link rel="canonical" href="https://fabisch.github.io/semantic-web/architecture/">
+      
+      
+        <link rel="prev" href="../configuration/">
+      
+      
+        <link rel="next" href="../engineering/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Architecture - Streaming Semantic Fragments</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Streaming Semantic Fragments" class="md-header__button md-logo" aria-label="Streaming Semantic Fragments" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Streaming Semantic Fragments
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="light"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="light" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fabisch/semantic-web" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fabisch/semantic-web
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href=".." class="md-tabs__link">
+          
+  
+  
+  Start
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../for-developers/" class="md-tabs__link">
+          
+  
+  
+  For developers
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../for-agents/" class="md-tabs__link">
+          
+  
+  
+  For agents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../features/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Streaming Semantic Fragments" class="md-nav__button md-logo" aria-label="Streaming Semantic Fragments" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Streaming Semantic Fragments
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fabisch/semantic-web" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fabisch/semantic-web
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Start
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Start
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why this exists
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    For developers
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    For developers
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../for-developers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reading the graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../websub-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Real-time push (WebSub)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    For agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    For agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../for-agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How agents use this
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent tutorial (Together AI + MCP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complete feature list
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-this-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. What this is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-design-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Design decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-three-primitives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The three primitives
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The three primitives">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-triple-pattern-fragments-streamed-get-fragments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Triple Pattern Fragments, streamed (GET /fragments)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-live-self-description-get-get-contextjsonld-get-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Live self-description (GET /, GET /context.jsonld, GET /manifest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-real-time-push-via-websub-post-hub-get-topicsname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Real-time push via WebSub (POST /hub, GET /topics/{name})
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#34-the-agent-manifest-get-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 The agent manifest (GET /manifest)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-namespace-prefix-compaction-no-domain-terms-in-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Namespace-prefix compaction (no domain terms in code)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-system-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. System overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-components-cratessemwebsrc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Components (crates/semweb/src)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-deployment-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Deployment topology
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../engineering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    For engineering teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scaling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scaling & production
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WebSub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSub specification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-this-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. What this is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-design-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Design decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-three-primitives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The three primitives
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The three primitives">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-triple-pattern-fragments-streamed-get-fragments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Triple Pattern Fragments, streamed (GET /fragments)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-live-self-description-get-get-contextjsonld-get-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Live self-description (GET /, GET /context.jsonld, GET /manifest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-real-time-push-via-websub-post-hub-get-topicsname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Real-time push via WebSub (POST /hub, GET /topics/{name})
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#34-the-agent-manifest-get-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 The agent manifest (GET /manifest)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-namespace-prefix-compaction-no-domain-terms-in-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Namespace-prefix compaction (no domain terms in code)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-system-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. System overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-components-cratessemwebsrc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Components (crates/semweb/src)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-deployment-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Deployment topology
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture">Architecture</h1>
+<blockquote>
+<p>Streaming Semantic Fragments — a live, agent-readable surface over RDF,
+built on standard web technologies only.</p>
+</blockquote>
+<h2 id="1-what-this-is">1. What this is</h2>
+<p>A Rust service that puts RDF data "in simple terms for users and agents
+together", and keeps that surface <strong>real-time as the ontology changes</strong>.
+It is built from three primitives, all carried over standards that
+already exist (REST, HTTP chunked streaming, NDJSON, JSON-LD, WebSub):</p>
+<ol>
+<li><strong>Triple Pattern Fragments</strong> — the read primitive (§3.1)</li>
+<li><strong>Live self-description</strong> — the discovery/catalog primitive (§3.2)</li>
+<li><strong>WebSub push</strong> — the real-time change primitive (§3.3)</li>
+</ol>
+<p>No new protocol, no new query language, no translation layer in front
+of the store. SPARQL remains the execution plane; the service's
+contribution is the live discovery and notification layer around it.</p>
+<h2 id="2-design-decisions">2. Design decisions</h2>
+<p>The service is the missing layer between an RDF store and its consumers —
+not a replacement for any of them. Each decision below follows from one
+constraint: <strong>the surface must stay correct while the data evolves</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SPARQL is the execution plane</td>
+<td>The store speaks SPARQL 1.1 already. The service adds discovery and notification around it, never a translation layer in front of it.</td>
+</tr>
+<tr>
+<td>Self-description, not compiled schema</td>
+<td>"What exists?" is answered from the live store on every request. No build step, no staleness window: the moment the ontology changes, the next request reflects it.</td>
+</tr>
+<tr>
+<td>Push over poll</td>
+<td>WebSub for durable subscribers (they can be offline between events), SSE for live sessions. Both come from one in-process publish bus.</td>
+</tr>
+<tr>
+<td>Plain HTTP only</td>
+<td>REST verbs, query params, standard media types. Works with curl, proxies, caches, any HTTP client on day one — and every mechanism (streaming, auth headers, retries) composes with the rest of the web.</td>
+</tr>
+<tr>
+<td>Namespace-prefix compaction, never per-term tables</td>
+<td>Domain terms are <em>never</em> hardcoded (see §4). Standard namespaces get conventional prefixes; anything else stays a full URI or gets a runtime-registered prefix. Ontology growth requires zero code changes.</td>
+</tr>
+<tr>
+<td>Hypermedia over convention</td>
+<td>Responses embed the controls a client needs to keep going (<code>after</code> cursors, topic lists, discovery Link headers) — no out-of-band schema required.</td>
+</tr>
+<tr>
+<td>At-least-once delivery</td>
+<td>WebSub's contract plus a durable delivery log: correctness over exactly-once convenience; consumers treat notifications as idempotent.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-the-three-primitives">3. The three primitives</h2>
+<h3 id="31-triple-pattern-fragments-streamed-get-fragments">3.1 Triple Pattern Fragments, streamed (<code>GET /fragments</code>)</h3>
+<p>A client supplies zero to three of <code>subject</code>/<code>predicate</code>/<code>object</code>;
+omitted positions are wildcards — exactly the <code>{?s ?p ?o}</code> pattern
+semantics of the Triple Pattern Fragments specification.</p>
+<ul>
+<li>The pattern is expressed as a SPARQL <code>SELECT</code> against the store.
+  Concrete positions are <code>BIND</code>-ed so every result row carries all
+  three terms regardless of which positions were wildcards (SPARQL
+  engines omit variables that do not occur in the pattern — see
+  store.rs <code>pattern_fragment</code>).</li>
+<li><strong>Cursor pagination</strong> (<code>?after=&lt;opaque cursor&gt;</code>): the cursor is the
+  string form of the last-seen triple (base64 JSON), and results are
+  ordered by the string forms of (s, p, o) so pages are deterministic
+  and seeking is O(1) — no linear OFFSET scans. <code>?offset</code> remains for
+  legacy clients; the control line carries both (<code>after</code> and <code>next</code>).</li>
+<li><strong>Cardinality counters</strong>: per-class/per-predicate triple counts are
+  maintained in-process (loaded with GROUP BY queries at startup,
+  updated on every write through this service). Patterns the counters
+  cover get their <code>count_estimate</code> without a COUNT round-trip; the
+  rest fall back to an exact server COUNT.</li>
+<li>The response is <strong>NDJSON: one compacted JSON-LD statement per line</strong>,
+  streamed as each line is ready. A client can act on line 1 without
+  waiting for the page.</li>
+<li>The final line is the hypermedia control:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"@control"</span><span class="p">:</span><span class="w"> </span><span class="s2">"metadata"</span><span class="p">,</span><span class="w"> </span><span class="nt">"count_estimate"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"after"</span><span class="p">:</span><span class="w"> </span><span class="s2">"WyJodHRw..."</span><span class="p">,</span><span class="w"> </span><span class="nt">"next"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/fragments?...&amp;offset=100"</span><span class="p">}</span>
+</code></pre></div>
+<p>Why one <em>triple</em> per line and not grouped <em>node</em> objects: grouping
+requires buffering every triple for a subject before emitting, which
+breaks streaming for patterns matching millions of subjects. Grouping
+is a cheap client-side operation; ungrouping a large buffered node
+server-side is not.</p>
+<h3 id="32-live-self-description-get-get-contextjsonld-get-manifest">3.2 Live self-description (<code>GET /</code>, <code>GET /context.jsonld</code>, <code>GET /manifest</code>)</h3>
+<p>The "semantic catalog" piece of the design. Two cheap SPARQL queries
+against the <strong>current</strong> store state on every call ("which classes are
+in use", "which predicates are in use") produce a description that can
+never go stale — no build step, no rebuild window:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"@context"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/context.jsonld"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"generatedFrom"</span><span class="p">:</span><span class="w"> </span><span class="s2">"live store state (not a cached build)"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"storeMode"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sparql-rust"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"classes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"foaf:Organization"</span><span class="p">,</span><span class="w"> </span><span class="s2">"foaf:Person"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"predicates"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"schema:employee"</span><span class="p">,</span><span class="w"> </span><span class="s2">"schema:worksFor"</span><span class="p">,</span><span class="w"> </span><span class="s2">"rdf:type"</span><span class="p">,</span><span class="w"> </span><span class="s2">"foaf:knows"</span><span class="p">,</span><span class="w"> </span><span class="s2">"foaf:name"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"controls"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"fragments"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/fragments{?subject,predicate,object,after,limit,offset}"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"sparql"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/sparql{?query}"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"manifest"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/manifest"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"hub"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/hub"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"topics"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"/topics/data"</span><span class="p">,</span><span class="w"> </span><span class="s2">"/topics/schema"</span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>/context.jsonld</code> is generated live the same way (namespaces in use →
+prefixes). <code>GET /manifest</code> is the agent-facing evolution of this
+catalog (§4 below). SPARQL itself is reachable through the same origin
+and auth model via the read-only <code>GET /sparql?query=...</code> passthrough —
+the execution plane, one hop from the discovery plane.</p>
+<h3 id="33-real-time-push-via-websub-post-hub-get-topicsname">3.3 Real-time push via WebSub (<code>POST /hub</code>, <code>GET /topics/{name}</code>)</h3>
+<p>The change-notification primitive implements the W3C WebSub
+Recommendation (<code>docs/WebSub.md</code>). Publisher and hub are this service
+(the simplest valid topology); subscribers are any HTTP-callable app or
+agent-side service. Two topics:</p>
+<ul>
+<li><code>/topics/data</code> — instance data changed</li>
+<li><code>/topics/schema</code> — the ontology <em>surface</em> changed (a class or
+  predicate appeared that wasn't in use before)</li>
+</ul>
+<p>The full conformance map, section numbers referring to docs/WebSub.md:</p>
+<table>
+<thead>
+<tr>
+<th>Spec requirement</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>§3.1.1.3 hub accepts hub.callback/mode/topic (+hub.secret, hub.lease_seconds)</td>
+<td>api.rs <code>hub_post</code>, hub.rs <code>subscribe</code>/<code>unsubscribe</code></td>
+</tr>
+<tr>
+<td>§5.1.2 <code>202</code> immediately; MUST NOT depend on verification outcome</td>
+<td>verification runs in a spawned task after the response</td>
+</tr>
+<tr>
+<td>§5.3 intent verification: GET callback with hub.mode, hub.topic, hub.challenge, hub.lease_seconds</td>
+<td><code>verify_and_commit</code></td>
+</tr>
+<tr>
+<td>§5.3 challenge charset (<code>+ - . / 0-9 = A-Z _ a-z</code>) and §8.2 no-binary</td>
+<td><code>generate_challenge</code> (URL-safe subset, 43 chars)</td>
+</tr>
+<tr>
+<td>§5.3.1 2xx + body == challenge commits; wrong body / 3xx / 4xx / 5xx leaves state unchanged</td>
+<td><code>verify_and_commit</code></td>
+</tr>
+<tr>
+<td>§5.1 re-requests of active subscriptions allowed; state overridden only after verification</td>
+<td>commit-on-success in <code>verify_and_commit</code></td>
+</tr>
+<tr>
+<td>§5.1 hub.secret MUST be &lt; 200 bytes</td>
+<td>validated in hub.rs, 4xx otherwise</td>
+</tr>
+<tr>
+<td>§5.3 hubs MUST enforce lease expirations; MUST NOT issue perpetual leases</td>
+<td>default 1 day, clamped to [60s, 10 days], 30s sweeper task</td>
+</tr>
+<tr>
+<td>§5.1.1 callback query string preserved, never overwritten; params travel in the URL</td>
+<td><code>append_query</code></td>
+</tr>
+<tr>
+<td>§5.2 denied notifications (hub.mode=denied + hub.reason)</td>
+<td><code>send_denied</code></td>
+</tr>
+<tr>
+<td>§6 publisher→hub notification (hub.mode=publish &amp; hub.url)</td>
+<td>api.rs publish branch</td>
+</tr>
+<tr>
+<td>§7 distribution = POST of the <strong>full</strong> topic contents, Content-Type matching the topic, Link headers rel=self + rel=hub</td>
+<td><code>TopicContent</code> built at publish time; queued, delivered by workers</td>
+</tr>
+<tr>
+<td>§7.1 HMAC <code>X-Hub-Signature</code> when hub.secret supplied</td>
+<td>sha256 (§8.3: SHA-1 ruled out, sha256 is the minimum)</td>
+</tr>
+<tr>
+<td>§7 retries up to self-imposed limits; subscription stays active until lease end; 410 Gone terminates</td>
+<td>worker retry loop (1s/5s/15s schedule)</td>
+</tr>
+<tr>
+<td>§4 discovery: topic resources advertise rel=self + rel=hub</td>
+<td><code>GET /topics/{name}</code> Link headers, single representation per §4.1</td>
+</tr>
+</tbody>
+</table>
+<p>Scale-out mechanisms layered onto the hub (each verified by the test
+battery):</p>
+<ul>
+<li><strong>Subscription persistence</strong> — subscriptions persist to a dedicated
+  named graph in the store; a restart reloads them, expired leases are
+  dropped on load (§5.3). No extra infrastructure.</li>
+<li><strong>Secret encryption at rest</strong> — <code>hub.secret</code> values are AES-256-GCM
+  encrypted (<code>SEMWEB_SECRET_KEY</code>) before persistence; legacy plaintext
+  values keep working and tampering is rejected by the AEAD.</li>
+<li><strong>Durable delivery log</strong> — every delivery is logged in the store
+  before enqueue and acked on completion; a crash mid-flight redelivers
+  on startup (at-least-once). Publishes from any replica are picked up
+  by the owning replica's periodic log scan (age-guarded so in-flight
+  retries are not duplicated).</li>
+<li><strong>Multi-replica sharding</strong> — with <code>SEMWEB_REPLICA_COUNT &gt; 1</code> a
+  (topic, callback) is owned by exactly one replica (consistent hash of
+  its subscription id); replicas share the store, poll it for new
+  subscriptions and pending deliveries, and deliver only their own
+  shard. Verified with two replicas against one store.</li>
+<li><strong>Bounded delivery queue + worker pool</strong> — <code>SEMWEB_QUEUE_CAPACITY</code> +
+  <code>SEMWEB_DELIVERY_WORKERS</code>; explicit backpressure, publish latency
+  decoupled from delivery.</li>
+<li><strong>Rate limiting</strong> — token bucket per callback (burst 10, refill
+  10/min) on subscription requests; exhausted → <code>429</code> + metric.</li>
+<li><strong>Callback policies</strong> (§5.1) — optional HTTPS-callback requirement
+  when secrets are used (<code>SEMWEB_REQUIRE_HTTPS_CALLBACKS</code>) and an
+  optional callback-host allowlist (<code>SEMWEB_CALLBACK_ALLOWLIST</code>).</li>
+<li><strong>Hub auth</strong> — <code>SEMWEB_HUB_TOKEN</code> optionally gates who may
+  subscribe/unsubscribe/publish; <code>SEMWEB_WRITE_TOKEN</code> gates the write
+  path; read endpoints stay open.</li>
+<li><strong>Observability</strong> — <code>/metrics</code> (Prometheus text, incl. redelivery and
+  sharding-routing counters), <code>/health</code> (liveness + store readiness),
+  per-mutation <code>event_id</code>, and <code>GET /events</code> (SSE) for live sessions.</li>
+</ul>
+<h2 id="34-the-agent-manifest-get-manifest">3.4 The agent manifest (<code>GET /manifest</code>)</h2>
+<p>The live-catalog evolution: everything an agent needs to <em>plan</em> against
+the graph, regenerated live on every request:</p>
+<ul>
+<li><strong>Schema fingerprint</strong> — sha256 over the sorted class+predicate URI
+  set. Carried on the manifest and on <code>/topics/schema</code> content, so
+  consumers detect missed schema-change events and diff safely.</li>
+<li><strong>Live cardinalities</strong> — instances per class, triples per predicate
+  (GROUP BY on every request; never inherited counter drift).</li>
+<li><strong>Human descriptions</strong> — pulled live from <code>rdfs:comment</code> /
+  <code>skos:definition</code>: the grounding text agents plan against — what
+  terms <em>mean</em>, not just which exist.</li>
+<li><strong>Worked example SPARQL per class</strong> — generated, executable at
+  <code>/sparql</code>.</li>
+</ul>
+<p>Delivery is content, not transport: the same manifest travels as HTTP
+GET, as the <code>/topics/schema</code> WebSub payload, and (roadmap) as an MCP
+resource.</p>
+<h2 id="4-namespace-prefix-compaction-no-domain-terms-in-code">4. Namespace-prefix compaction (no domain terms in code)</h2>
+<p>Consumers should never read raw URIs. Compaction is prefix-based:</p>
+<ul>
+<li><strong>Standards namespaces</strong> (rdf, rdfs, owl, xsd, sh, foaf, schema,
+  dcterms, skos) are registered with their conventional prefixes — the
+  same table every Turtle file, SPARQL query and JSON-LD context
+  assumes. This is ecosystem vocabulary, not application data: any term
+  from these vocabularies compacts automatically (<code>foaf:mbox</code>,
+  <code>schema:address</code>, <code>rdfs:seeAlso</code>, …) with zero code changes.</li>
+<li><strong>Unknown namespaces stay full URIs</strong> — honest and stable, no
+  invented names. A private namespace can be given a friendly prefix at
+  runtime via <code>SEMWEB_EXTRA_PREFIXES</code>
+  (<code>name=namespace</code>, comma-separated) without recompiling.</li>
+<li><code>rdf:type</code> compacts to <code>@type</code> (standard JSON-LD convention).</li>
+<li>Typed literals keep their datatype (<code>xsd:date</code>), language-tagged
+  literals keep their tag — RDF fidelity over the wire is a
+  requirement, not an optimization.</li>
+</ul>
+<p>Compaction lives in <code>context.rs</code> (<code>PrefixMap</code>); the same map both
+compacts output and generates the live <code>/context.jsonld</code>.</p>
+<h2 id="5-system-overview">5. System overview</h2>
+<div class="highlight"><pre><span></span><code>                     ┌───────────────────────────────────────────┐
+                     │            crates/semweb (Rust)           │
+   HTTP GET /        │  ┌──────────────┐   ┌─────────────────┐   │
+  ──────────────────►│  │    api.rs    │──►│     store.rs    │   │
+   self-description  │  │  (axum HTTP) │   │  SPARQL 1.1     │   │
+                     │  └──────┬───────┘   │    Protocol     │   │
+   GET /fragments    │         │           └────────┬────────┘   │
+  ──────────────────►│  ┌──────▼───────┐            │            │
+   NDJSON-LD stream  │  │    hub.rs    │            ▼            │
+                     │  │  WebSub hub  │   ┌──────────────────┐  │
+   POST /hub         │  └──────┬───────┘   │  Oxigraph server │  │
+  ──────────────────►│         │           │  (standalone)    │  │
+   subscribe/publish │         │           └──────────────────┘  │
+                     └─────────┼─────────────────────────────────┘
+                               │ POST (full topic content,
+                               │ Link headers, HMAC-signed)
+                               ▼
+                     ┌─────────────────────┐
+                     │ subscribers (any    │
+                     │ callback URL, any   │
+                     │ app/agent)          │
+                     └─────────────────────┘
+</code></pre></div>
+<h2 id="6-components-cratessemwebsrc">6. Components (crates/semweb/src)</h2>
+<p>Coding convention: one concern per small file — no module over ~300
+lines, everything is editable in isolation.</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>main.rs</code></td>
+<td>Wiring: config, router, background tasks (seed + shapes load, counter warm-up/refresh, persistence load, lease sweeper, replica subscription refresh)</td>
+</tr>
+<tr>
+<td><code>state.rs</code></td>
+<td>Environment-based configuration, shared <code>AppState</code></td>
+</tr>
+<tr>
+<td><code>util.rs</code></td>
+<td>Shared helpers (schema fingerprint, hex)</td>
+</tr>
+<tr>
+<td><code>jsonld.rs</code></td>
+<td>SPARQL JSON bindings → compacted JSON-LD lines</td>
+</tr>
+<tr>
+<td><code>context.rs</code></td>
+<td>Namespace-prefix compaction and live <code>@context</code> generation</td>
+</tr>
+<tr>
+<td><strong>api/</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><code>api/mod.rs</code></td>
+<td>Router, shared helpers (discovery headers, NDJSON streaming, bearer auth)</td>
+</tr>
+<tr>
+<td><code>api/self_description.rs</code></td>
+<td>GET / and /context.jsonld</td>
+</tr>
+<tr>
+<td><code>api/fragments.rs</code></td>
+<td>GET /fragments (TPF, cursor pagination, named graphs)</td>
+</tr>
+<tr>
+<td><code>api/sparql.rs</code></td>
+<td>GET /sparql (read-only execution plane)</td>
+</tr>
+<tr>
+<td><code>api/manifest.rs</code></td>
+<td>GET /manifest (agent manifest + SHACL shapes)</td>
+</tr>
+<tr>
+<td><code>api/events.rs</code></td>
+<td>GET /events (SSE change feed for live sessions)</td>
+</tr>
+<tr>
+<td><code>api/hub_endpoints.rs</code></td>
+<td>POST</td>
+</tr>
+<tr>
+<td><code>api/write.rs</code></td>
+<td>POST /admin/insert (token-gated write path)</td>
+</tr>
+<tr>
+<td><code>api/mcp.rs</code></td>
+<td>POST /mcp (minimal MCP resource server: initialize, resources/list, resources/read)</td>
+</tr>
+<tr>
+<td><code>api/health_metrics.rs</code></td>
+<td>GET /health, GET /metrics (Prometheus text)</td>
+</tr>
+<tr>
+<td><strong>hub/</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><code>hub/mod.rs</code></td>
+<td>Hub core: subscriptions, publish fan-out (durable log + sharding), SSE broadcast, policies, persistence reload</td>
+</tr>
+<tr>
+<td><code>hub/verification.rs</code></td>
+<td>§5.3 intent verification, challenge, lease clamping, callback query preservation</td>
+</tr>
+<tr>
+<td><code>hub/delivery.rs</code></td>
+<td>Worker pool + content distribution with retries, 410, §7.1 HMAC signing</td>
+</tr>
+<tr>
+<td><code>hub/crypto.rs</code></td>
+<td>AES-256-GCM secret encryption at rest (SEMWEB_SECRET_KEY)</td>
+</tr>
+<tr>
+<td><code>hub/rate_limit.rs</code></td>
+<td>Per-callback token bucket</td>
+</tr>
+<tr>
+<td><code>hub/metrics.rs</code></td>
+<td>Hub counters</td>
+</tr>
+<tr>
+<td><strong>store/</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><code>store/mod.rs</code></td>
+<td>SPARQL 1.1 Protocol client core (query/update/Graph Store Protocol/shapes)</td>
+</tr>
+<tr>
+<td><code>store/fragments.rs</code></td>
+<td>TPF lookup + pagination cursor</td>
+</tr>
+<tr>
+<td><code>store/cardinality.rs</code></td>
+<td>Maintained counters (classes, predicates, subjects, total)</td>
+</tr>
+<tr>
+<td><code>store/persistence.rs</code></td>
+<td>Hub-graph durability: subscriptions, delivery log, SHACL shapes</td>
+</tr>
+<tr>
+<td><code>bin/demo-subscriber.rs</code></td>
+<td>Spec-conformant demo WebSub subscriber (challenge echo, signature validation)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-deployment-topology">7. Deployment topology</h2>
+<p><code>docker compose up --build</code> runs two containers:</p>
+<ul>
+<li><strong>oxigraph</strong> standalone (<code>/query</code>, <code>/update</code>, <code>/store</code>), data in a
+  named volume. Any SPARQL 1.1 Protocol endpoint can substitute for it —
+  the service's store contract is the protocol, not a product.</li>
+<li><strong>semantic-web</strong> (this service), configured by environment:
+  <code>SEMWEB_SPARQL_ENDPOINT</code>, <code>SEMWEB_SPARQL_UPDATE</code>,
+  <code>SEMWEB_PUBLIC_URL</code> (absolute base for rel=self/rel=hub discovery
+  URLs), <code>SEMWEB_SEED_PATH</code> (optional Turtle seed, loaded via the Graph
+  Store Protocol with <code>?default</code> — load-bearing: a bare GSP POST to
+  oxigraph 0.5.10 lands in a server-generated named graph), and
+  <code>SEMWEB_EXTRA_PREFIXES</code> for runtime prefix
+  registration.</li>
+</ul>
+<p>The WebSub demo profile adds <strong>demo-subscriber</strong> so the full
+publish/subscribe loop runs inside the network with no host networking.</p>
+<h2 id="8-roadmap">8. Roadmap</h2>
+<p>Everything designed for the service itself is implemented: durability
+(subscriptions + delivery log), multi-replica sharding, encryption at
+rest, auth hooks, observability, the agent manifest with SHACL shapes,
+MCP delivery, SSE, named graphs and cursor pagination (§3–4). What
+remains is deployment-level (TLS termination, KMS-backed key
+management, per-tenant productization) — tracked in docs/scaling.md.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "content.code.copy", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -76,7 +76,8 @@ not code:
 
 ## 7. Non-goals
 
-- GraphQL façade: rejected deliberately (architecture.md §2). The thin
-  typed contract humans sometimes want can be layered later on the same
-  catalog, but it is not the foundation.
-- A bespoke transport: everything rides on REST/HTTP/WebSub/NDJSON.
+- A pre-compiled query contract: the whole point is that the
+  self-description is *live*; freezing it into a compiled artifact would
+  reintroduce the rebuild/versioning machinery the design exists to
+  avoid (architecture.md §2).
+- A bespoke transport: everything rides on REST/HTTP/WebSub/NDJSON/MCP.

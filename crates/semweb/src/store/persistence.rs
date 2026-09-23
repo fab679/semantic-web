@@ -34,7 +34,21 @@ const SH: &str = "http://www.w3.org/ns/shacl#";
 const HUB_SUBJ_PREFIX: &str = "urn:semweb:sub:";
 const DELIVERY_SUBJ_PREFIX: &str = "urn:semweb:delivery:";
 
-/// A SHACL property shape, as surfaced by the agent manifest.
+/// One durable-log delivery record (see Hub::publish).
+pub struct DeliveryRecord<'a> {
+    pub id: &'a str,
+    pub event_id: &'a str,
+    pub topic: &'a str,
+    pub callback: &'a str,
+    /// Already serialized (encrypted when a key is configured).
+    pub secret: Option<&'a str>,
+    pub self_url: &'a str,
+    pub hub_url: &'a str,
+}
+
+    /// Record a delivery in the durable log BEFORE it is queued. When the
+    /// service crashes mid-flight, startup re-enqueues everything still
+    /// in this graph.
 #[derive(Clone, Debug)]
 pub struct Shape {
     #[allow(dead_code)] // the grouping key; kept for completeness
@@ -151,14 +165,17 @@ impl SparqlStore {
     /// in this graph.
     pub async fn persist_delivery(
         &self,
-        id: &str,
-        event_id: &str,
-        topic: &str,
-        callback: &str,
-        secret: Option<&str>,
-        self_url: &str,
-        hub_url: &str,
+        rec: &DeliveryRecord<'_>,
     ) -> Result<(), StoreError> {
+        let DeliveryRecord {
+            id,
+            event_id,
+            topic,
+            callback,
+            secret,
+            self_url,
+            hub_url,
+        } = rec;
         let secret_triple = match secret {
             Some(s) => format!("<{DELIVERY_SUBJ_PREFIX}{id}> <{NS}secret> {} .\n", escape_literal(s)),
             None => String::new(),
@@ -182,6 +199,20 @@ impl SparqlStore {
         .await
     }
 
+    /// Claim a logged delivery before working on it: the claim is an
+    /// absolute deadline after which the entry is fair game again (the
+    /// claiming process crashed mid-flight). A live claim prevents other
+    /// workers/replicas from re-enqueueing the same in-flight delivery
+    /// during its retry window -- duplicates only happen if the claimer
+    /// crashes before acking, which is exactly the at-least-once case.
+    pub async fn claim_delivery(&self, id: &str, until_epoch: u64) -> Result<(), StoreError> {
+        self.update(&format!(
+            "INSERT DATA {{ GRAPH <{HUB_DELIVERIES_GRAPH}> {{ \
+             <{DELIVERY_SUBJ_PREFIX}{id}> <{NS}claimedUntil> {until_epoch} }}}}"
+        ))
+        .await
+    }
+
     /// Ack (delete) one logged delivery.
     pub async fn delete_delivery(&self, id: &str) -> Result<(), StoreError> {
         self.update(&format!(
@@ -195,7 +226,17 @@ impl SparqlStore {
     pub async fn load_pending_deliveries(
         &self,
     ) -> Result<
-        Vec<(String, String, String, String, Option<String>, String, String, u64)>,
+        Vec<(
+            String, // id
+            String, // event_id
+            String, // topic
+            String, // callback
+            Option<String>, // secret (serialized)
+            String, // self_url
+            String, // hub_url
+            u64,    // enqueued_at
+            u64,    // claimed_until (0 = unclaimed)
+        )>,
         StoreError,
     > {
         let rows = self
@@ -227,6 +268,10 @@ impl SparqlStore {
                     r.pointer("/selfUrl/value")?.as_str()?.to_string(),
                     r.pointer("/hubUrl/value")?.as_str()?.to_string(),
                     r.pointer("/at/value")?.as_str()?.parse().ok()?,
+                    r.pointer("/claimed/value")
+                        .and_then(Value::as_str)
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0),
                 ))
             })
             .collect())

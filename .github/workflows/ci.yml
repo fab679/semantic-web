@@ -16,7 +16,14 @@ jobs:
         run: cargo build --locked
       - name: Unit tests
         run: cargo test --locked
-      - name: Clippy (warnings are errors)
-        run: cargo clippy --locked -- -D warnings || true
+      - name: Clippy (hard gate)
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: Docker build
         run: docker build .
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: End-to-end battery (docker compose)
+        run: ./scripts/e2e.sh

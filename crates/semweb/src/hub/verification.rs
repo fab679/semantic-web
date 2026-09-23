@@ -3,10 +3,12 @@
 //! The hub GETs the callback with hub.mode, hub.topic, hub.challenge and
 //! (for subscribe) hub.lease_seconds appended to the callback's existing
 //! query string. Commit rules (§5.3.1):
+//!
 //!   - 2xx + body == challenge  -> action is verified: commit it
 //!   - 404                      -> subscriber rejects the action: no change
 //!   - any other 3xx/4xx/5xx    -> verification failed: no change
 //!   - 2xx + wrong body         -> verification failed: no change
+//!
 //! Committing a subscribe (re)creates/extends the (topic, callback)
 //! subscription with the hub-determined lease; committing an unsubscribe
 //! removes it. A previously active subscription is only touched once the

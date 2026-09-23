@@ -1,0 +1,57 @@
+site_name: Streaming Semantic Fragments
+site_description: A live, agent-readable surface over RDF — Triple Pattern Fragments, live self-description, and WebSub push. Plain HTTP only.
+site_url: https://fabisch.github.io/semantic-web
+repo_url: https://github.com/fabisch/semantic-web
+repo_name: fabisch/semantic-web
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: light
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Start:
+      - Why this exists: index.md
+      - Quickstart: getting-started.md
+  - For developers:
+      - Reading the graph: for-developers.md
+      - API reference: api.md
+      - Real-time push (WebSub): websub-guide.md
+  - For agents:
+      - How agents use this: for-agents.md
+      - Agent tutorial (Together AI + MCP): agent-tutorial.md
+  - Reference:
+      - Complete feature list: features.md
+      - Configuration reference: configuration.md
+      - Architecture: architecture.md
+      - For engineering teams: engineering.md
+      - Scaling & production: scaling.md
+      - WebSub specification: WebSub.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - def_list

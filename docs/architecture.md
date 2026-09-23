@@ -14,21 +14,25 @@ already exist (REST, HTTP chunked streaming, NDJSON, JSON-LD, WebSub):
 2. **Live self-description** — the discovery/catalog primitive (§3.2)
 3. **WebSub push** — the real-time change primitive (§3.3)
 
-No new protocol, no new query language, no GraphQL translation layer.
-SPARQL remains the execution plane; the service's contribution is the
-discovery and notification layer around it.
+No new protocol, no new query language, no translation layer in front
+of the store. SPARQL remains the execution plane; the service's
+contribution is the live discovery and notification layer around it.
 
 ## 2. Design decisions
 
+The service is the missing layer between an RDF store and its consumers —
+not a replacement for any of them. Each decision below follows from one
+constraint: **the surface must stay correct while the data evolves**.
+
 | Decision | Rationale |
 |---|---|
-| SPARQL is the execution plane | No translation layer between consumers and the graph. Agents write real SPARQL against a live catalog. |
-| Self-description, not compiled schema | The service introspects the store on every request. There is no build step, nothing to regenerate, no staleness window. The moment the ontology changes, the next request reflects it. |
-| No GraphQL façade | Open-world RDF (multi-typed resources, no fixed cardinality) does not survive the closed-world translation. Schema-as-contract also fights liveness: regenerating SDL on every ontology edit trades an openness RDF has for free against versioning machinery. |
-| WebSub for push | Subscribers register a callback once and can be offline between notifications — the right shape for backend services and agent-side consumers. (SSE/WebSockets for live browser sessions remain complementary; see scaling.md.) |
-| Plain HTTP only | REST verbs, query params, form-encoded WebSub requests, standard media types. Works with curl, proxies, caches, any HTTP client on day one. |
+| SPARQL is the execution plane | The store speaks SPARQL 1.1 already. The service adds discovery and notification around it, never a translation layer in front of it. |
+| Self-description, not compiled schema | "What exists?" is answered from the live store on every request. No build step, no staleness window: the moment the ontology changes, the next request reflects it. |
+| Push over poll | WebSub for durable subscribers (they can be offline between events), SSE for live sessions. Both come from one in-process publish bus. |
+| Plain HTTP only | REST verbs, query params, standard media types. Works with curl, proxies, caches, any HTTP client on day one — and every mechanism (streaming, auth headers, retries) composes with the rest of the web. |
 | Namespace-prefix compaction, never per-term tables | Domain terms are *never* hardcoded (see §4). Standard namespaces get conventional prefixes; anything else stays a full URI or gets a runtime-registered prefix. Ontology growth requires zero code changes. |
-| Hypermedia over convention | Responses embed the controls a client needs to keep going (`next` links, topic lists, discovery Link headers) — no out-of-band schema required. |
+| Hypermedia over convention | Responses embed the controls a client needs to keep going (`after` cursors, topic lists, discovery Link headers) — no out-of-band schema required. |
+| At-least-once delivery | WebSub's contract plus a durable delivery log: correctness over exactly-once convenience; consumers treat notifications as idempotent. |
 
 ## 3. The three primitives
 

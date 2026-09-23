@@ -74,8 +74,9 @@ mod tests {
     use crate::context::PrefixMap;
     use serde_json::json;
 
+    #[allow(dead_code)]
     fn prefixes() -> PrefixMap {
-        PrefixMap::from_env()
+        PrefixMap::empty()
     }
 
     #[test]

@@ -68,7 +68,14 @@ pub(crate) async fn deliver_one(hub: Arc<Hub>, delivery: Delivery, worker: usize
         tracing::info!(event = event_id, callback, "redelivering from durable log after restart");
     }
 
-    for attempt in 0..=RETRY_DELAYS.len() {
+    // attempt 0 = first send; attempts 1.. = after each retry delay
+    for (attempt, delay) in std::iter::once(Duration::ZERO)
+        .chain(RETRY_DELAYS)
+        .enumerate()
+    {
+        if attempt > 0 {
+            tokio::time::sleep(delay).await;
+        }
         let mut req = hub
             .http
             .post(&callback)
@@ -105,14 +112,13 @@ pub(crate) async fn deliver_one(hub: Arc<Hub>, delivery: Delivery, worker: usize
                     Ok(r) => format!("{}", r.status()),
                     Err(e) => format!("error: {e}"),
                 };
-                if attempt < RETRY_DELAYS.len() {
+                if attempt <= RETRY_DELAYS.len() {
                     hub.metrics.delivery_retries.fetch_add(1, Ordering::Relaxed);
                     tracing::warn!(
                         event = event_id, worker, callback,
                         "delivery failed ({status}); retrying in {:?}",
-                        RETRY_DELAYS[attempt]
+                        RETRY_DELAYS[attempt - 1]
                     );
-                    tokio::time::sleep(RETRY_DELAYS[attempt]).await;
                 } else {
                     // §7: keep the subscription active until lease end even
                     // after exhausting retries for this notification; only

@@ -62,6 +62,8 @@ pub use crate::hub::metrics::HubMetrics;
 use crate::hub::crypto::SecretCrypto;
 use crate::hub::rate_limit::RateLimiter;
 
+pub(crate) mod publish;
+pub(crate) mod reload;
 pub(crate) mod verification;
 pub(crate) mod delivery;
 pub(crate) mod crypto;
@@ -87,12 +89,7 @@ pub enum HubError {
 /// Subscribers should use the rel=self URL from discovery (absolute);
 /// accepting the bare path keeps local development and tests friendly.
 pub fn resolve_topic(topic: &str) -> Option<&'static str> {
-    for t in TOPICS {
-        if topic == t || topic.ends_with(t) {
-            return Some(t);
-        }
-    }
-    None
+    TOPICS.into_iter().find(|&t| topic == t || topic.ends_with(t)).map(|v| v as _)
 }
 
 #[derive(Clone)]
@@ -347,88 +344,6 @@ impl Hub {
     /// contract. Also broadcasts an SSE event for live sessions.
     /// Returns the number of deliveries enqueued (0 when nothing is
     /// subscribed / owned by this replica).
-    pub async fn publish(self: Arc<Self>, topic: &'static str, event_id: &str) -> usize {
-        let content = match self.build_topic_content(topic).await {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("publish of {topic} skipped: {e:?}");
-                return 0;
-            }
-        };
-        let self_url = format!("{}{topic}", self.config.public_url);
-        let hub_url = format!("{}/hub", self.config.public_url);
-        let subs = self.owned_subs(topic).await;
-        // Observability: subscriptions this replica did NOT deliver for
-        // (owned by other replicas sharing the store).
-        let total_active = self
-            .subs
-            .read()
-            .await
-            .iter()
-            .filter(|((sub_topic, _), sub)| {
-                resolve_topic(sub_topic) == Some(topic)
-                    && sub.lease_expires > std::time::Instant::now()
-            })
-            .count();
-        if total_active > subs.len() {
-            self.metrics
-                .routed_to_other_replica
-                .fetch_add((total_active - subs.len()) as u64, Ordering::Relaxed);
-        }
-        let mut scheduled = 0;
-        for (callback, secret) in subs {
-            let id = subscription_persist_id(topic, &callback);
-            let stored_secret = secret.as_deref().map(|s| self.crypto.encrypt(s));
-            // Durable log FIRST: a crash between log and delivery causes
-            // redelivery on startup (at-least-once semantics).
-            if let Err(e) = self
-                .store
-                .persist_delivery(
-                    &id,
-                    event_id,
-                    topic,
-                    &callback,
-                    stored_secret.as_deref(),
-                    &self_url,
-                    &hub_url,
-                )
-                .await
-            {
-                tracing::warn!(event = event_id, callback, "delivery log write failed: {e}");
-            }
-            let delivery = Delivery {
-                id: id.clone(),
-                topic,
-                callback,
-                secret,
-                content: content.clone(),
-                self_url: self_url.clone(),
-                hub_url: hub_url.clone(),
-                event_id: event_id.to_string(),
-                from_log: false,
-            };
-            match self.queue.try_send(delivery) {
-                Ok(()) => scheduled += 1,
-                Err(_) => {
-                    // Explicit backpressure: the delivery stays in the
-                    // durable log and is redelivered after a restart.
-                    self.metrics.queue_dropped.fetch_add(1, Ordering::Relaxed);
-                    tracing::error!(
-                        event = event_id,
-                        topic,
-                        "delivery queue full; notification kept in the durable log \
-                         (redelivered on restart)"
-                    );
-                }
-            }
-        }
-        let _ = self.broadcast.send(SseEvent {
-            topic: topic.to_string(),
-            event_id: event_id.to_string(),
-        });
-        scheduled
-    }
-
     /// §5.2 denial notification: GET the callback with
     /// hub.mode=denied, hub.topic and an optional hub.reason.
     pub(crate) async fn send_denied(&self, callback: &str, topic: &str, reason: &str) {
@@ -478,194 +393,6 @@ impl Hub {
             if let Err(e) = self.store.delete_hub_subscription(&id).await {
                 tracing::warn!("persisted subscription {id} removal failed: {e}");
             }
-        }
-    }
-
-    /// Periodic refresh for multi-replica deployments: subscriptions are
-    /// persisted to the shared store by ANY replica (whichever receives
-    /// the subscribe), so replicas poll persistence to learn about
-    /// subscriptions created after their startup. Newer leases win
-    /// (re-request/renewal semantics); removal happens only via
-    /// unsubscribe and lease expiry, so this never resurrects deleted
-    /// subscriptions.
-    pub async fn refresh_from_persistence(&self) {
-        let Ok(rows) = self.store.load_hub_subscriptions().await else { return };
-        let mut subs = self.subs.write().await;
-        for (topic, callback, stored_secret, expires) in rows {
-            if expires <= verification::now_epoch() {
-                continue;
-            }
-            let key = (topic, callback);
-            match subs.get(&key) {
-                Some(existing) if existing.lease_expires_epoch >= expires => {} // unchanged
-                _ => {
-                    let secret = stored_secret.as_deref().and_then(|s| self.crypto.decrypt(s));
-                    subs.insert(
-                        key,
-                        Subscription {
-                            secret,
-                            lease_expires: Instant::now()
-                                + Duration::from_secs(expires.saturating_sub(verification::now_epoch())),
-                            lease_expires_epoch: expires,
-                        },
-                    );
-                }
-            }
-        }
-        // Also pick up deliveries logged for this shard by other replicas.
-        self.redeliver_pending().await;
-    }
-
-    /// Reload state from persistence at startup:
-    ///   1. subscriptions (crash recovery; expired leases are dropped per
-    ///      §5.3),
-    ///   2. pending deliveries from the durable log -- rebuilt with the
-    ///      CURRENT topic content and re-enqueued (at-least-once).
-    pub async fn load_persisted(&self) {
-        match self.store.load_hub_subscriptions().await {
-            Ok(rows) => {
-                let now = verification::now_epoch();
-                let mut subs = self.subs.write().await;
-                let mut loaded = 0;
-                let mut expired = 0;
-                for (topic, callback, stored_secret, expires) in rows {
-                    if expires <= verification::now_epoch() {
-                        expired += 1;
-                        continue;
-                    }
-                    let secret = stored_secret.as_deref().and_then(|s| self.crypto.decrypt(s));
-                    if stored_secret.is_some() && secret.is_none() {
-                        tracing::warn!("secret decryption failed for a persisted subscription; \
-                                        storing without signing capability");
-                    }
-                    subs.insert(
-                        (topic, callback),
-                        Subscription {
-                            secret,
-                            lease_expires: Instant::now()
-                                + Duration::from_secs(expires.saturating_sub(now)),
-                            lease_expires_epoch: expires,
-                        },
-                    );
-                    loaded += 1;
-                }
-                tracing::info!(
-                    "subscription persistence: {loaded} active loaded, {expired} expired dropped"
-                );
-            }
-            Err(e) => tracing::warn!("subscription persistence load failed: {e}"),
-        }
-
-        self.redeliver_pending().await;
-    }
-
-    /// Re-enqueue owned deliveries still in the durable log: startup
-    /// crash-recovery AND the periodic scan (a publish on replica X logs
-    /// deliveries for all shards; owners pick them up on their next scan
-    /// within SEMWEB_SUBS_REFRESH_SECS). Workers ack (delete) after
-    /// success / 410 / retry exhaustion.
-    async fn redeliver_pending(&self) {
-        match self.store.load_pending_deliveries().await {
-            Ok(pending) => {
-                let now = verification::now_epoch();
-                for (id, event_id, topic, callback, stored_secret, self_url, hub_url, enqueued_at) in pending {
-                    // Age guard: entries younger than the full retry
-                    // schedule (1+5+15s, plus slack) may be actively
-                    // retried by another worker/replica right now;
-                    // re-enqueueing would duplicate in-flight deliveries.
-                    if now.saturating_sub(enqueued_at) < 60 {
-                        continue;
-                    }
-                    let topic_static = match resolve_topic(&topic) {
-                        Some(t) => t,
-                        None => {
-                            let _ = self.store.delete_delivery(&id).await;
-                            continue;
-                        }
-                    };
-
-                    // Only the owning replica redelivers.
-                    if !self.owns(&topic, &callback) {
-                        continue;
-                    }
-                    let content = match self.build_topic_content(topic_static).await {
-                        Ok(c) => c,
-                        Err(e) => {
-                            tracing::error!(event = event_id, "redelivery content build failed: {e:?}");
-                            continue;
-                        }
-                    };
-                    let secret = stored_secret.and_then(|s| self.crypto.decrypt(&s));
-                    match self.queue.try_send(Delivery {
-                        id: id.clone(),
-                        topic: topic_static,
-                        callback,
-                        secret,
-                        content,
-                        self_url,
-                        hub_url,
-                        event_id: event_id.clone(),
-                        from_log: true,
-                    }) {
-                        Ok(()) => {
-                            self.metrics
-                                .redelivered_on_restart
-                                .fetch_add(1, Ordering::Relaxed);
-                        }
-                        Err(_) => {
-                            // Keep the log entry; the next restart retries.
-                            tracing::warn!(event = event_id, "redelivery queue full; log entry kept");
-                        }
-                    }
-                }
-            }
-            Err(e) => tracing::warn!("pending delivery log load failed: {e}"),
-        }
-    }
-
-    /// Full topic content (§7: the hub MUST send the full
-    /// contents of the topic URL; diffs are only allowed for Atom/RSS, so
-    /// JSON/NDJSON topics get the full body). Lives here (not in the api
-    /// layer) so the durable-log redelivery path can rebuild content.
-    pub async fn build_topic_content(&self, topic: &str) -> Result<TopicContent, crate::store::StoreError> {
-        match topic {
-            "/topics/data" => {
-                let bindings = self.store.all_bindings().await?;
-                let mut body = String::new();
-                for b in &bindings {
-                    if let Some(line) = crate::jsonld::binding_to_line(b, &self.prefixes) {
-                        body.push_str(&serde_json::to_string(&line).unwrap_or_default());
-                        body.push('\n');
-                    }
-                }
-                Ok(TopicContent {
-                    body: body.into_bytes(),
-                    content_type: "application/x-ndjson",
-                })
-            }
-            "/topics/schema" => {
-                let info = self.store.describe_schema().await?;
-                let schema = serde_json::json!({
-                    "@context": "/context.jsonld",
-                    "generatedFrom": "live store state (not a cached build)",
-                    "schemaFingerprint": crate::util::schema_fingerprint(
-                        &info.class_uris, &info.predicate_uris),
-                    "classes": info.class_uris.iter().map(|u| self.prefixes.compact(u)).collect::<Vec<_>>(),
-                    "predicates": info.predicate_uris.iter().map(|u| self.prefixes.compact(u)).collect::<Vec<_>>(),
-                    "controls": {
-                        "fragments": "/fragments{?subject,predicate,object,after,limit,offset,graph}",
-                        "sparql": "/sparql{?query}",
-                        "manifest": "/manifest",
-                        "hub": "/hub",
-                        "topics": TOPICS,
-                    },
-                });
-                Ok(TopicContent {
-                    body: serde_json::to_vec(&schema).unwrap_or_default(),
-                    content_type: "application/json",
-                })
-            }
-            _ => Err(crate::store::StoreError(format!("unknown topic: {topic}"))),
         }
     }
 }

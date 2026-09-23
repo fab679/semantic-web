@@ -80,9 +80,9 @@ impl SecretCrypto {
             return Some(stored.to_string()); // legacy plaintext
         };
         let key = self.key?;
-        let mut parts = stripped.splitn(2, ':');
-        let nonce_b64 = parts.next()?;
-        let ct_b64 = parts.next()?;
+        let (nonce_b64, ct_b64) = stripped.split_once(':')?;
+        
+        
         let nonce = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(nonce_b64).ok()?;
         if nonce.len() != NONCE_LEN {
             return None;

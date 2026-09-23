@@ -2,4 +2,4 @@
 /target
 
 # Environment / local files
-.env
+.envsite/

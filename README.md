@@ -5,7 +5,7 @@ Fragments streamed as NDJSON-LD over a SPARQL 1.1 Protocol store, live
 self-description with no build step, and real-time change push via a
 WebSub hub implementing the W3C Recommendation
 ([docs/WebSub.md](docs/WebSub.md)). Plain HTTP only — REST, chunked
-streaming, JSON-LD. No new protocol, no GraphQL translation layer.
+streaming, JSON-LD. No new protocol, no translation layer in front of the store.
 
 - [Architecture](docs/architecture.md) — the design, the three
   primitives, the WebSub conformance map

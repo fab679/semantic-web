@@ -1,0 +1,94 @@
+# Quickstart
+
+## Run the stack
+
+```sh
+git clone https://github.com/fabisch/semantic-web
+cd semantic-web
+docker compose up --build -d
+```
+
+Two containers come up:
+
+| Container | What | Where |
+|---|---|---|
+| `oxigraph` | the triple store (SPARQL 1.1 Protocol) | <http://localhost:7878> |
+| `semantic-web` | this service | <http://localhost:8000> |
+
+## First look (30 seconds)
+
+```sh
+# What does the graph contain? (live, always current)
+curl http://localhost:8000/
+
+# Stream triples matching a pattern
+curl "http://localhost:8000/fragments?predicate=http://schema.org/worksFor"
+
+# The agent manifest (classes, descriptions, SHACL shapes, examples)
+curl http://localhost:8000/manifest
+```
+
+## Put data in
+
+Writes are token-gated (compose sets `demo-write-token`):
+
+```sh
+curl -X POST http://localhost:8000/admin/insert \
+  -H "Authorization: Bearer demo-write-token" \
+  -H "Content-Type: application/json" \
+  -d '{"subject":"http://example.org/dave","predicate":"http://xmlns.com/foaf/0.1/name","object":"Dave"}'
+```
+
+Read it back immediately — there is no rebuild:
+
+```sh
+curl "http://localhost:8000/fragments?subject=http://example.org/dave"
+```
+
+## Watch it change in real time
+
+Terminal 1 — run the demo subscriber:
+
+```sh
+docker compose --profile demo up -d demo-subscriber
+```
+
+Terminal 2 — subscribe and mutate:
+
+```sh
+curl -X POST http://localhost:8000/hub \
+  -d "hub.mode=subscribe" \
+  -d "hub.topic=http://localhost:8000/topics/data" \
+  -d "hub.callback=http://demo-subscriber:9000/callback" \
+  -d "hub.secret=demo"
+
+curl -X POST http://localhost:8000/admin/insert \
+  -H "Authorization: Bearer demo-write-token" \
+  -H "Content-Type: application/json" \
+  -d '{"subject":"http://example.org/erin","predicate":"http://xmlns.com/foaf/0.1/knows","object":"http://example.org/alice"}'
+```
+
+The subscriber logs a signature-verified, full-content notification:
+
+```sh
+docker compose logs -f demo-subscriber
+# content distribution received; signature verified (sha256)
+```
+
+## Run it locally (no docker)
+
+```sh
+# Oxigraph separately (or any SPARQL 1.1 endpoint)
+docker run -p 7878:7878 ghcr.io/oxigraph/oxigraph:0.5.10 serve --bind 0.0.0.0:7878
+
+cargo run -p semweb
+```
+
+## What's inside
+
+- **Rust service** (axum + tokio) — the whole HTTP surface
+- **Oxigraph** — the store; any SPARQL 1.1 endpoint is a drop-in
+- Environment-configured: `SEMWEB_WRITE_TOKEN`, `SEMWEB_SECRET_KEY`
+  (encrypts subscriber secrets at rest), `SEMWEB_REPLICA_COUNT/INDEX`
+  (sharding), `SEMWEB_SHACL_PATH`, and more — see
+  [README](https://github.com/fabisch/semantic-web#readme).

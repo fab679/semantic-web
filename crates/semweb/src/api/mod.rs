@@ -29,6 +29,7 @@ pub use fragments::fragments;
 pub use health_metrics::{health, metrics};
 pub use hub_endpoints::{hub_get, hub_post, topic};
 pub use manifest::manifest;
+pub(crate) use manifest::manifest_document;
 pub use mcp::mcp;
 pub use self_description::{context_jsonld, root};
 pub use sparql::sparql;
@@ -63,6 +64,11 @@ pub(crate) fn bump_fragments_requests() {
 
 pub(crate) fn bump_inserts() {
     counters::INSERTS_TOTAL.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Alias used by the MCP insert_triple tool (keeps module boundaries clean).
+pub(crate) fn counters_insert() {
+    bump_inserts();
 }
 
 

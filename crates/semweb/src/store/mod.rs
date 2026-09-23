@@ -5,12 +5,12 @@
 //! over the wire. Exclusively standard interfaces:
 //!
 //! - Queries   : GET {query}?query=... with Accept:
-//!               application/sparql-results+json
+//!   application/sparql-results+json
 //! - Updates   : POST {update} with Content-Type: application/sparql-update
 //! - Seed load : Graph Store Protocol POST {store}?default (the `?default`
-//!               is load-bearing: a bare POST to /store is accepted with
-//!               201 by oxigraph 0.5.10 but lands in a server-generated
-//!               named graph that /query never sees)
+//!   is load-bearing: a bare POST to /store is accepted with
+//!   201 by oxigraph 0.5.10 but lands in a server-generated
+//!   named graph that /query never sees)
 //!
 //! Sub-modules:
 //! - `fragments`    : Triple Pattern Fragment lookup + pagination cursor
@@ -26,10 +26,10 @@ pub mod persistence;
 
 pub use cardinality::Cardinality;
 #[allow(unused_imports)]
-pub use fragments::{Cursor, FragmentPage};
+pub use fragments::{Cursor, FragmentPage, FragmentQuery};
 
 #[allow(unused_imports)]
-pub use persistence::{HUB_DELIVERIES_GRAPH, HUB_GRAPH, SHAPES_GRAPH};
+pub use persistence::{DeliveryRecord, HUB_DELIVERIES_GRAPH, HUB_GRAPH, SHAPES_GRAPH};
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -316,7 +316,7 @@ impl SparqlStore {
             None => format!("<{subject}> <{predicate}> {obj}"),
         };
         let sparql = format!("INSERT DATA {{ {body} }}");
-        self.update(&sparql).await.map_err(StoreError::from)?;
+        self.update(&sparql).await?;
 
         // Rebuild the raw binding of the inserted triple so change-event
         // metadata matches what the fragments stream emits.

@@ -16,6 +16,19 @@ use serde_json::Value;
 
 use super::{escape_literal, Cardinality, SparqlStore, StoreError};
 
+/// A Triple Pattern Fragment query. All positions optional (wildcards);
+/// `graph` selects a named graph (multi-tenancy) when present.
+#[derive(Clone, Debug, Default)]
+pub struct FragmentQuery<'a> {
+    pub subject: Option<&'a str>,
+    pub predicate: Option<&'a str>,
+    pub object: Option<&'a str>,
+    pub graph: Option<&'a str>,
+    pub limit: u64,
+    pub offset: u64,
+    pub after: Option<&'a Cursor>,
+}
+
 pub struct FragmentPage {
     /// Raw SPARQL JSON bindings (?s ?p ?o) for this page.
     pub bindings: Vec<Value>,
@@ -105,15 +118,18 @@ impl SparqlStore {
     /// One page of a Triple Pattern Fragment.
     pub async fn pattern_fragment(
         &self,
-        subject: Option<&str>,
-        predicate: Option<&str>,
-        object: Option<&str>,
-        graph: Option<&str>,
-        limit: u64,
-        offset: u64,
-        after: Option<&Cursor>,
+        q: FragmentQuery<'_>,
         cardinality: Option<&Cardinality>,
     ) -> Result<FragmentPage, StoreError> {
+        let FragmentQuery {
+            subject,
+            predicate,
+            object,
+            graph,
+            limit,
+            offset,
+            after,
+        } = q;
         let parts = pattern_parts(subject, predicate, object);
         let where_terms: Vec<&str> = parts.iter().map(|(_, t)| t.as_str()).collect();
 

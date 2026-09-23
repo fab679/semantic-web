@@ -55,9 +55,11 @@ services:
       # Subscription-secret encryption at rest (recommended). 32 random
       # bytes, hex. `openssl rand -hex 32`.
       SEMWEB_SECRET_KEY: 5f4d3c2b1a0987654321fedcba9876543210fedcba9876543210abcdef123456
-      # Replica sharding defaults (1 replica). Set COUNT>1 + distinct
-      # INDEX on scaled-out replicas sharing one store.
-      SEMWEB_REPLICA_COUNT: "1"
+      # Replica sharding: read SEMWEB_REPLICA_COUNT from the environment
+      # (default 1). The `scale` profile's second replica fixes COUNT=2 /
+      # INDEX=1, so `SEMWEB_REPLICA_COUNT=2 docker compose --profile scale up`
+      # makes both replicas one 2-shard cluster sharing the store.
+      SEMWEB_REPLICA_COUNT: ${SEMWEB_REPLICA_COUNT:-1}
       SEMWEB_REPLICA_INDEX: "0"
       RUST_LOG: info
     depends_on:
@@ -88,6 +90,29 @@ services:
     profiles: ["demo"]
     depends_on:
       - semantic-web
+
+  # Optional 2-replica sharding demo (with oxigraph shared):
+  #   docker compose --profile scale up -d
+  # Both replicas serve the same store; each delivers only the
+  # subscriptions its consistent-hash shard owns. Watch:
+  #   docker compose logs -f semantic-web-2
+  semantic-web-2:
+    build: .
+    ports:
+      - "8011:8000"
+    environment:
+      SEMWEB_SPARQL_ENDPOINT: http://oxigraph:7878/query
+      SEMWEB_SPARQL_UPDATE: http://oxigraph:7878/update
+      SEMWEB_PUBLIC_URL: http://localhost:8011
+      SEMWEB_SEED_PATH: /app/sample_data.ttl
+      SEMWEB_WRITE_TOKEN: demo-write-token
+      SEMWEB_SECRET_KEY: 5f4d3c2b1a0987654321fedcba9876543210fedcba9876543210abcdef123456
+      SEMWEB_REPLICA_COUNT: "2"
+      SEMWEB_REPLICA_INDEX: "1"
+      RUST_LOG: info
+    profiles: ["scale"]
+    depends_on:
+      - oxigraph
 
 volumes:
   oxigraph-data:

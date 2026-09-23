@@ -18,6 +18,14 @@ use serde_json::{json, Value};
 use crate::api::{internal, SharedState};
 
 pub async fn manifest(State(state): SharedState) -> Result<impl IntoResponse, (StatusCode, String)> {
+    Ok(axum::Json(manifest_document(&state).await?))
+}
+
+/// Build the manifest document. Shared with the MCP resource server
+/// (mcp/resources.rs), so both transports serve byte-identical content.
+pub(crate) async fn manifest_document(
+    state: &crate::state::AppState,
+) -> Result<Value, (StatusCode, String)> {
     let info = state.store.describe_schema().await.map_err(internal)?;
     let descriptions = state.store.descriptions().await.map_err(internal)?;
     let class_counts = state.store.class_counts().await.map_err(internal)?;
@@ -68,7 +76,7 @@ pub async fn manifest(State(state): SharedState) -> Result<impl IntoResponse, (S
         })
         .collect();
 
-    Ok(axum::Json(json!({
+    Ok(json!({
         "@context": "/context.jsonld",
         "kind": "agent-manifest",
         "generatedFrom": "live store state (not a cached build)",
@@ -82,5 +90,5 @@ pub async fn manifest(State(state): SharedState) -> Result<impl IntoResponse, (S
             "hub": "/hub",
             "events": "/events{?topic}",
         },
-    })))
+    }))
 }
