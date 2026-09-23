@@ -1,3 +1,17 @@
+# Secrets — never commit
 .env
-site/
+
+# Rust
 /target
+
+# Generated docs site (GitHub Pages builds it in CI)
+site/
+
+# Python (tutorial agent / local tooling)
+.venv/
+__pycache__/
+*.py[cod]
+
+# OS noise
+.DS_Store
+Thumbs.db
