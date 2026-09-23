@@ -63,6 +63,7 @@ periodic scan.
 | Variable | Effect |
 |---|---|
 | `SEMWEB_EXTRA_PREFIXES` | comma-separated `name=namespace` pairs — friendly prefixes for private namespaces, e.g. `ex=http://example.org/vocab/,acme=http://acme.example/ns#` |
+| `SEMWEB_TERM_ALIASES` | comma-separated `name=URI` pairs — bare friendly names for exact URIs, emitted in `/context.jsonld` as JSON-LD term definitions (round-trippable). Demo default: `name`, `knows`, `employer`, `employs`, `founded` |
 
 Standard vocabularies (rdf, rdfs, owl, xsd, sh, foaf, schema, dcterms,
 skos) always compact; extras never shadow them.

@@ -14,7 +14,7 @@ covered in depth on its guide page; this page is the full map.
 | Named graphs (tenants) | Isolate tenants into graphs | `?graph=` on reads |
 | SPARQL execution | Read-only SELECT/ASK/DESCRIBE/CONSTRUCT passthrough | `GET /sparql` |
 | Typed-value fidelity | Dates, numbers, language tags survive the wire (`xsd:date`, `@language`) | everywhere |
-| Prefix compaction | Standard vocabularies → `foaf:name`-style CURIEs; runtime extras via env | all outputs |
+| Prefix compaction + term aliases | Standard vocabularies → `foaf:name` CURIEs; configured terms → bare friendly names (`name`, `employer`) with JSON-LD term definitions in `/context.jsonld` | all outputs |
 
 ## Discovery & grounding (agents, developers)
 

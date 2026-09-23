@@ -65,7 +65,7 @@ if curl -sf -X POST "$BASE/mcp" -H 'Content-Type: application/json' \
   | python3 -c 'import json,sys; ts=json.load(sys.stdin)["result"]["tools"]; assert len(ts)==6'; then check "mcp tools/list (6 tools)" 0; else check "mcp tools/list (6 tools)" 1; fi
 if curl -sf -X POST "$BASE/mcp" -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"search_graph","arguments":{"predicate":"http://schema.org/worksFor","limit":2}}}' \
-  | python3 -c 'import json,sys; t=json.load(sys.stdin)["result"]["content"][0]["text"]; assert "worksFor" in t or "schema:worksFor" in t'; then check "mcp tools/call search_graph" 0; else check "mcp tools/call search_graph" 1; fi
+  | python3 -c 'import json,sys; t=json.load(sys.stdin)["result"]["content"][0]["text"]; assert "worksFor" in t or "schema:worksFor" in t or "employer" in t'; then check "mcp tools/call search_graph" 0; else check "mcp tools/call search_graph" 1; fi
 
 say "write auth + write path"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/admin/insert" -H 'Content-Type: application/json' \

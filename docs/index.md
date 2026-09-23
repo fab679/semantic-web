@@ -40,12 +40,16 @@ web API:
 
 Three ideas carry the whole design — everything else follows from them:
 
-**1. Friendly names, zero compromise.** You never read a raw URI. A
-shared vocabulary context maps `http://xmlns.com/foaf/0.1/name` to
-`name`, `foaf:knows` to `knows`. Standard vocabularies compact
-automatically; private namespaces get names at runtime; unknown things
-stay honest full URIs. Typed values keep their types (`"2001-04-03"` stays
-a date).
+**1. Friendly names, zero compromise.** You never read a raw URI — and
+nothing is hardcoded. Standard vocabularies compact automatically
+(`http://xmlns.com/foaf/0.1/mbox` → `foaf:mbox`); private namespaces get
+prefixes at runtime (`SEMWEB_EXTRA_PREFIXES`); and the terms your
+consumers read most get **bare friendly names** at runtime
+(`SEMWEB_TERM_ALIASES=name=http://xmlns.com/foaf/0.1/name` → `"name"`)
+— the demo stack ships five. Unknown things stay honest full URIs.
+Everything round-trips through `/context.jsonld` (prefixes *and* term
+definitions), and typed values keep their types (`"2001-04-03"` stays a
+date).
 
 **2. The description IS the data.** There is no schema file to compile,
 no build step, no cache to bust. Every request for "what does this graph

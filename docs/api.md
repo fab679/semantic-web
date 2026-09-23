@@ -73,10 +73,16 @@ in use in the store:
     "type": "@type",
     "schema": "http://schema.org/",
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-    "foaf": "http://xmlns.com/foaf/0.1/"
+    "foaf": "http://xmlns.com/foaf/0.1/",
+    "name": {"@id": "http://xmlns.com/foaf/0.1/name"},
+    "employer": {"@id": "http://schema.org/worksFor"}
   }
 }
 ```
+
+Term aliases (JSON-LD term definitions) come from `SEMWEB_TERM_ALIASES`
+— they compact matching URIs to bare names in output *and* round-trip
+for JSON-LD processors.
 
 Only registered prefixes are emitted. Namespaces without a registered
 prefix appear as full URIs in the data — the context need not (and

@@ -46,6 +46,11 @@ services:
       SEMWEB_SPARQL_UPDATE: http://oxigraph:7878/update
       SEMWEB_PUBLIC_URL: http://localhost:8484
       SEMWEB_SEED_PATH: /app/sample_data.ttl
+      # Vocabulary: runtime prefixes for private namespaces + bare term
+      # aliases (the "friendly names" layer -- operators choose, nothing
+      # hardcoded). See docs/configuration.md.
+      SEMWEB_EXTRA_PREFIXES: ${SEMWEB_EXTRA_PREFIXES:-}
+      SEMWEB_TERM_ALIASES: ${SEMWEB_TERM_ALIASES:-name=http://xmlns.com/foaf/0.1/name,knows=http://xmlns.com/foaf/0.1/knows,employer=http://schema.org/worksFor,employs=http://schema.org/employee,founded=http://schema.org/foundingDate}
       # Federation: open-hub policy + external hub fan-out (see docs/federation.md)
       SEMWEB_OPEN_HUB: ${SEMWEB_OPEN_HUB:-0}
       SEMWEB_HUB_URLS: ${SEMWEB_HUB_URLS:-}

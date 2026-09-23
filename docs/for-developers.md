@@ -22,8 +22,10 @@ You get NDJSON — one compacted JSON-LD statement per line, streamed:
 {"@id": "http://example.org/acme", "employer": {"@id": "http://example.org/alice"}}
 ```
 
-Friendly names come from the shared JSON-LD context (`/context.jsonld`);
-standard vocabularies compact to CURIEs (`foaf:name`, `xsd:date`), and
+Friendly names come from the shared JSON-LD context
+(`/context.jsonld`): standard vocabularies compact to CURIEs
+(`foaf:name`, `xsd:date`), configured terms get bare names (`name`,
+`employer` — the demo stack ships five via `SEMWEB_TERM_ALIASES`), and
 unknown namespaces stay as full URIs — no invented names, ever.
 
 Typed literals keep their type:

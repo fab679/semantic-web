@@ -48,17 +48,24 @@ const STD_PREFIXES: &[(&str, &str)] = &[
     ("skos", SKOS_NS),
 ];
 
-/// Runtime-extensible prefix table: standards prefixes plus any
-/// SEMWEB_EXTRA_PREFIXES entries from the environment.
+/// Runtime-extensible compaction table:
+///   - prefixes for standard namespaces (always) + SEMWEB_EXTRA_PREFIXES
+///   - term aliases (SEMWEB_TERM_ALIASES): bare friendly names for exact
+///     URIs, e.g. name=http://xmlns.com/foaf/0.1/name -- the "friendly
+///     names" layer, still zero hardcoded terms (operators choose).
 pub struct PrefixMap {
     extra: Vec<(String, String)>,
+    terms: Vec<(String, String)>,
 }
 
 impl PrefixMap {
     /// An empty map (no runtime extras) -- tests.
     #[allow(dead_code)]
     pub fn empty() -> Self {
-        PrefixMap { extra: Vec::new() }
+        PrefixMap {
+            extra: Vec::new(),
+            terms: Vec::new(),
+        }
     }
 
     /// Build from SEMWEB_EXTRA_PREFIXES="name=namespace,name=namespace".
@@ -68,6 +75,26 @@ impl PrefixMap {
     /// never shadowed by extras (check standards first).
     pub fn from_env() -> Self {
         let mut extra = Vec::new();
+        let mut terms = Vec::new();
+        // Term aliases: bare friendly names for exact URIs.
+        if let Ok(raw) = std::env::var("SEMWEB_TERM_ALIASES") {
+            for entry in raw.split(',') {
+                let entry = entry.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                match entry.split_once('=') {
+                    Some((name, uri))
+                        if !name.is_empty()
+                            && uri.starts_with("http")
+                            && !name.contains(':') =>
+                    {
+                        terms.push((name.to_string(), uri.to_string()));
+                    }
+                    _ => tracing::warn!("ignoring malformed term alias: {entry}"),
+                }
+            }
+        }
         if let Ok(raw) = std::env::var("SEMWEB_EXTRA_PREFIXES") {
             for entry in raw.split(',') {
                 let entry = entry.trim();
@@ -84,13 +111,20 @@ impl PrefixMap {
                 }
             }
         }
-        PrefixMap { extra }
+        PrefixMap { extra, terms }
     }
 
     /// Compact a URI to `prefix:local` when its namespace is known
     /// (standards first, then runtime extras); otherwise return it
-    /// unchanged.
+    /// unchanged. An exact term alias (SEMWEB_TERM_ALIASES) wins over the
+    /// prefix form: operators choose bare friendly names for the terms
+    /// their consumers read most.
     pub fn compact(&self, uri: &str) -> String {
+        for (alias, alias_uri) in &self.terms {
+            if alias_uri == uri {
+                return alias.clone();
+            }
+        }
         match split_uri(uri) {
             Some((ns, local)) => {
                 for (name, std_ns) in STD_PREFIXES {
@@ -136,16 +170,29 @@ impl PrefixMap {
         None
     }
 
-    /// The JSON-LD `@context` document for the namespaces currently in
-    /// use. Only known prefixes are emitted; namespaces without a
-    /// registered prefix appear as full URIs in the data, which the
-    /// context need not (and cannot honestly) name.
+    /// The JSON-LD `@context` for the namespaces currently in use, plus
+    /// term aliases as JSON-LD term definitions ({"name": {"@id": uri}}),
+    /// so consumers can round-trip both. Only registered prefixes are
+    /// emitted; namespaces without a registered prefix appear as full
+    /// URIs in the data, which the context need not (and cannot honestly)
+    /// name. Alias names that collide with a prefix name are skipped
+    /// (prefixes win -- JSON-LD keywords aside, one key one meaning).
     pub fn context_document(&self, namespaces: &[String]) -> serde_json::Value {
         let mut map = serde_json::Map::new();
         map.insert("type".into(), serde_json::Value::String("@type".into()));
         for ns in namespaces {
             if let Some(prefix) = self.prefix_for(ns) {
                 map.insert(prefix, serde_json::Value::String(ns.clone()));
+            }
+        }
+        for (alias, uri) in &self.terms {
+            if !map.contains_key(alias) {
+                map.insert(
+                    alias.clone(),
+                    serde_json::json!({ "@id": uri }),
+                );
+            } else {
+                tracing::warn!("term alias '{alias}' collides with a prefix name; skipped");
             }
         }
         serde_json::json!({ "@context": serde_json::Value::Object(map) })
@@ -181,4 +228,43 @@ pub fn namespaces_of(class_uris: &[String], predicate_uris: &[String]) -> Vec<St
     ns.sort();
     ns.dedup();
     ns
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn map_with(aliases: &[(&str, &str)]) -> PrefixMap {
+        let mut m = PrefixMap::empty();
+        m.terms = aliases
+            .iter()
+            .map(|(a, u)| (a.to_string(), u.to_string()))
+            .collect();
+        m
+    }
+
+    #[test]
+    fn aliases_win_over_prefixes_for_exact_uris() {
+        let m = map_with(&[("name", "http://xmlns.com/foaf/0.1/name")]);
+        // exact match -> bare alias
+        assert_eq!(m.compact("http://xmlns.com/foaf/0.1/name"), "name");
+        // other foaf terms keep CURIE form
+        assert_eq!(m.compact("http://xmlns.com/foaf/0.1/mbox"), "foaf:mbox");
+        // non-matching URIs unchanged
+        assert_eq!(m.compact("http://example.org/vocab/age"), "http://example.org/vocab/age");
+    }
+
+    #[test]
+    fn aliases_serve_as_jsonld_term_definitions() {
+        let m = map_with(&[("name", "http://xmlns.com/foaf/0.1/name")]);
+        let doc = m.context_document(&["http://xmlns.com/foaf/0.1/".to_string()]);
+        let ctx = &doc["@context"];
+        // prefix entry still there
+        assert_eq!(ctx["foaf"], serde_json::json!("http://xmlns.com/foaf/0.1/"));
+        // alias as a JSON-LD term definition (round-trippable)
+        assert_eq!(
+            ctx["name"],
+            serde_json::json!({"@id": "http://xmlns.com/foaf/0.1/name"})
+        );
+    }
 }
