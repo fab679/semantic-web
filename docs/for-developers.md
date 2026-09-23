@@ -10,10 +10,10 @@ Triple Pattern Fragment lookup:
 
 ```sh
 # Who works at Acme?
-curl "http://localhost:8000/fragments?subject=http://example.org/acme&predicate=http://schema.org/employee"
+curl "http://localhost:8484/fragments?subject=http://example.org/acme&predicate=http://schema.org/employee"
 
 # Find by literal value
-curl "http://localhost:8000/fragments?predicate=http://xmlns.com/foaf/0.1/name&object=Alice"
+curl "http://localhost:8484/fragments?predicate=http://xmlns.com/foaf/0.1/name&object=Alice"
 ```
 
 You get NDJSON — one compacted JSON-LD statement per line, streamed:
@@ -43,9 +43,9 @@ The last line is a control line (identified by `"@control"`). Follow the
 ```
 
 ```sh
-curl "http://localhost:8000/fragments?limit=20"
+curl "http://localhost:8484/fragments?limit=20"
 # then
-curl "http://localhost:8000/fragments?limit=20&after=<the after value>"
+curl "http://localhost:8484/fragments?limit=20&after=<the after value>"
 ```
 
 ## 3. When fragments aren't enough: SPARQL
@@ -53,7 +53,7 @@ curl "http://localhost:8000/fragments?limit=20&after=<the after value>"
 The execution plane is real SPARQL, through the same origin:
 
 ```sh
-curl "http://localhost:8000/sparql?query=SELECT%20%3Fs%20%3Fname%20WHERE%20%7B%20%3Fs%20%3Chttp%3A%2F%2Fxmlns.com%2Ffoaf%2F0.1%2Fname%3E%20%3Fname%20%7D"
+curl "http://localhost:8484/sparql?query=SELECT%20%3Fs%20%3Fname%20WHERE%20%7B%20%3Fs%20%3Chttp%3A%2F%2Fxmlns.com%2Ffoaf%2F0.1%2Fname%3E%20%3Fname%20%7D"
 ```
 
 Read-only by construction (it hits the store's query endpoint; updates
@@ -62,7 +62,7 @@ live on a separate URL this handler never touches).
 ## 4. Write one triple
 
 ```sh
-curl -X POST http://localhost:8000/admin/insert \
+curl -X POST http://localhost:8484/admin/insert \
   -H "Authorization: Bearer demo-write-token" \
   -H "Content-Type: application/json" \
   -d '{"subject":"http://example.org/dave","predicate":"http://schema.org/worksFor","object":"http://example.org/acme"}'
@@ -79,7 +79,7 @@ publish** the affected topics, which the write path does.
 ## 5. Multi-tenancy: named graphs
 
 ```sh
-curl "http://localhost:8000/fragments?graph=http://example.org/graphs/tenant-a"
+curl "http://localhost:8484/fragments?graph=http://example.org/graphs/tenant-a"
 ```
 
 Default-graph reads never see tenant data.

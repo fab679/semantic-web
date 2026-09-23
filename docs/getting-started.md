@@ -13,19 +13,19 @@ Two containers come up:
 | Container | What | Where |
 |---|---|---|
 | `oxigraph` | the triple store (SPARQL 1.1 Protocol) | <http://localhost:7878> |
-| `semantic-web` | this service | <http://localhost:8000> |
+| `semantic-web` | this service | <http://localhost:8484> |
 
 ## First look (30 seconds)
 
 ```sh
 # What does the graph contain? (live, always current)
-curl http://localhost:8000/
+curl http://localhost:8484/
 
 # Stream triples matching a pattern
-curl "http://localhost:8000/fragments?predicate=http://schema.org/worksFor"
+curl "http://localhost:8484/fragments?predicate=http://schema.org/worksFor"
 
 # The agent manifest (classes, descriptions, SHACL shapes, examples)
-curl http://localhost:8000/manifest
+curl http://localhost:8484/manifest
 ```
 
 ## Put data in
@@ -33,7 +33,7 @@ curl http://localhost:8000/manifest
 Writes are token-gated (compose sets `demo-write-token`):
 
 ```sh
-curl -X POST http://localhost:8000/admin/insert \
+curl -X POST http://localhost:8484/admin/insert \
   -H "Authorization: Bearer demo-write-token" \
   -H "Content-Type: application/json" \
   -d '{"subject":"http://example.org/dave","predicate":"http://xmlns.com/foaf/0.1/name","object":"Dave"}'
@@ -42,7 +42,7 @@ curl -X POST http://localhost:8000/admin/insert \
 Read it back immediately — there is no rebuild:
 
 ```sh
-curl "http://localhost:8000/fragments?subject=http://example.org/dave"
+curl "http://localhost:8484/fragments?subject=http://example.org/dave"
 ```
 
 ## Watch it change in real time
@@ -56,13 +56,13 @@ docker compose --profile demo up -d demo-subscriber
 Terminal 2 — subscribe and mutate:
 
 ```sh
-curl -X POST http://localhost:8000/hub \
+curl -X POST http://localhost:8484/hub \
   -d "hub.mode=subscribe" \
-  -d "hub.topic=http://localhost:8000/topics/data" \
+  -d "hub.topic=http://localhost:8484/topics/data" \
   -d "hub.callback=http://demo-subscriber:9000/callback" \
   -d "hub.secret=demo"
 
-curl -X POST http://localhost:8000/admin/insert \
+curl -X POST http://localhost:8484/admin/insert \
   -H "Authorization: Bearer demo-write-token" \
   -H "Content-Type: application/json" \
   -d '{"subject":"http://example.org/erin","predicate":"http://xmlns.com/foaf/0.1/knows","object":"http://example.org/alice"}'

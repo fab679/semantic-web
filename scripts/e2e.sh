@@ -4,7 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-BASE=${BASE:-http://localhost:8000}
+BASE=${BASE:-http://localhost:8484}
 TOKEN="demo-write-token"
 FAIL=0
 
@@ -77,7 +77,7 @@ curl -sf -X POST "$BASE/admin/insert" -H "Authorization: Bearer demo-write-token
 
 say "WebSub: subscribe -> signed full-content delivery -> unsubscribe"
 docker compose --profile demo up -d demo-subscriber >/dev/null
-curl -sf -X POST "$BASE/hub" -d "hub.mode=subscribe" -d "hub.topic=http://localhost:8000/topics/data" \
+curl -sf -X POST "$BASE/hub" -d "hub.mode=subscribe" -d "hub.topic=http://localhost:8484/topics/data" \
   -d "hub.callback=http://demo-subscriber:9000/callback" -d "hub.secret=demo" >/dev/null
 sleep 2
 count_verified() {

@@ -61,7 +61,7 @@ way they list their other tools. Adding a tool server-side extends every
 agent without touching it.
 
 ```sh
-curl -X POST http://localhost:8000/mcp -H 'Content-Type: application/json' \
+curl -X POST http://localhost:8484/mcp -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
        "params":{"name":"search_graph",
                  "arguments":{"predicate":"http://schema.org/worksFor"}}}'

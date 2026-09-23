@@ -112,9 +112,13 @@ for _ in range(8):  # bounded
 ## Step 5 — Run it
 
 ```sh
-pip install "together>=2.0.0" requests
+# uv-managed (recommended -- installs into the example's own env):
 export TOGETHER_API_KEY=your_key
-python agent.py "Who works at Acme and what do we know about them?"
+uv run --project examples/agent agent.py "Who works at Acme and what do we know about them?"
+
+# or plain pip in your own env:
+pip install "together>=2.0.0" requests
+python examples/agent/agent.py "Who works at Acme and what do we know about them?"
 ```
 
 ```

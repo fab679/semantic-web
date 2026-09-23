@@ -21,16 +21,15 @@ graph says exists.
 ## Run it
 
 ```sh
-# 1. The graph (if not already running)
+# 1. The graph (if not already running) -- service on :8484, Oxigraph on :7878
 docker compose up --build -d
 
-# 2. The agent
-pip install "together>=2.0.0" requests
+# 2. The agent (uv-managed: deps live in this folder's pyproject.toml)
 export TOGETHER_API_KEY=your_key
-python agent.py "Who works at Acme and what do we know about them?"
+uv run --project examples/agent agent.py "Who works at Acme and what do we know about them?"
 
-# Watch live graph changes while the agent works:
-SEMWEB_SUBSCRIBE=1 python agent.py "What classes exist in this graph?"
+# watch live graph changes while the agent works:
+SEMWEB_SUBSCRIBE=1 uv run --project examples/agent agent.py "What classes exist in this graph?"
 ```
 
 ## What you will see

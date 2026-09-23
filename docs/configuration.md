@@ -16,7 +16,7 @@ files, no recompiles. Defaults in parentheses.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SEMWEB_PORT` | `8000` | listen port |
+| `SEMWEB_PORT` | `8484` | listen port (local runs). The project uses dedicated ports so it never conflicts with anything else on a machine: service **8484**, Oxigraph **7878**, scale replica 2 **8485** |
 | `SEMWEB_PUBLIC_URL` | `http://localhost:$PORT` | absolute base used for WebSub discovery (`rel=self` / `rel=hub`) Link headers |
 | `RUST_LOG` | `info` | tracing filter (`debug` for delivery/verification detail) |
 

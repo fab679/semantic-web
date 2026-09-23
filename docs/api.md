@@ -5,7 +5,7 @@ architecture is built on (REST verbs, form-encoded WebSub requests,
 NDJSON streaming, JSON-LD). No authentication yet — see scaling.md for
 the hardening roadmap.
 
-Base URL: `http://localhost:8000` (docker compose) unless
+Base URL: `http://localhost:8484` (docker compose) unless
 `SEMWEB_PUBLIC_URL` changes it.
 
 ## Endpoints
@@ -35,7 +35,7 @@ No cache, no build step — always exactly as current as the data.
 Carries WebSub discovery Link headers (`rel=self`, `rel=hub`).
 
 ```sh
-curl -i http://localhost:8000/
+curl -i http://localhost:8484/
 ```
 
 ```json
@@ -100,9 +100,9 @@ omitted positions are wildcards).
 | `offset` | Legacy skip count (cursor pagination is preferred; results are deterministic either way — ordered by the string forms of s, p, o) |
 
 ```sh
-curl "http://localhost:8000/fragments?predicate=http://schema.org/worksFor"
-curl "http://localhost:8000/fragments?subject=http://example.org/acme"
-curl "http://localhost:8000/fragments?predicate=http://xmlns.com/foaf/0.1/name&object=Alice"
+curl "http://localhost:8484/fragments?predicate=http://schema.org/worksFor"
+curl "http://localhost:8484/fragments?subject=http://example.org/acme"
+curl "http://localhost:8484/fragments?predicate=http://xmlns.com/foaf/0.1/name&object=Alice"
 ```
 
 Response: `application/x-ndjson`, streamed, one compacted JSON-LD
@@ -141,7 +141,7 @@ hop from the discovery plane. The query is forwarded to the store's
 handler never touches, so read-only is guaranteed by construction.
 
 ```sh
-curl "http://localhost:8000/sparql?query=SELECT%20%3Fs%20%3Fname%20WHERE%20%7B%20%3Fs%20%3Chttp%3A%2F%2Fxmlns.com%2Ffoaf%2F0.1%2Fname%3E%20%3Fname%20%7D"
+curl "http://localhost:8484/sparql?query=SELECT%20%3Fs%20%3Fname%20WHERE%20%7B%20%3Fs%20%3Chttp%3A%2F%2Fxmlns.com%2Ffoaf%2F0.1%2Fname%3E%20%3Fname%20%7D"
 ```
 
 Response: the store's SPARQL JSON results, content-type preserved.
@@ -202,7 +202,7 @@ of topic size. Keepalive comments flow every 15s; a `Lagged` event
 tells the client it missed events and should resync.
 
 ```sh
-curl -N "http://localhost:8000/events?topic=/topics/data"
+curl -N "http://localhost:8484/events?topic=/topics/data"
 ```
 
 ```text
@@ -219,11 +219,11 @@ agents discover and read the manifest exactly the way they list tools:
 JSON-RPC 2.0 over POST, single-JSON responses.
 
 ```sh
-curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" \
+curl -X POST http://localhost:8484/mcp -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
-curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" \
+curl -X POST http://localhost:8484/mcp -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}'
-curl -X POST http://localhost:8000/mcp -H "Content-Type: application/json" \
+curl -X POST http://localhost:8484/mcp -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"manifest://semantic-web/current"}}'
 ```
 
@@ -251,7 +251,7 @@ queue drops, rate-limit hits, active subscriptions, fragment requests
 and inserts.
 
 ```sh
-curl http://localhost:8000/metrics
+curl http://localhost:8484/metrics
 ```
 
 ```text
@@ -293,9 +293,9 @@ delivery is retried across a scan window; subscribers should treat
 duplicates as idempotent).
 
 ```sh
-curl -X POST http://localhost:8000/hub \
+curl -X POST http://localhost:8484/hub \
   -d "hub.mode=subscribe" \
-  -d "hub.topic=http://localhost:8000/topics/data" \
+  -d "hub.topic=http://localhost:8484/topics/data" \
   -d "hub.callback=http://localhost:9000/callback" \
   -d "hub.secret=my-secret"
 ```
@@ -343,9 +343,9 @@ The spec leaves the publisher→hub mechanism open; the conventional
 `hub.mode=publish` + `hub.url` form is supported:
 
 ```sh
-curl -X POST http://localhost:8000/hub \
+curl -X POST http://localhost:8484/hub \
   -d "hub.mode=publish" \
-  -d "hub.url=http://localhost:8000/topics/data"
+  -d "hub.url=http://localhost:8484/topics/data"
 ```
 
 The hub rebuilds the topic content at publish time and fans out.
@@ -362,13 +362,13 @@ will preserve (§4.1: one representation per rel=self, so no
 content-negotiation ambiguity):
 
 ```sh
-curl -i http://localhost:8000/topics/data
+curl -i http://localhost:8484/topics/data
 ```
 
 ```
 HTTP/1.1 200 OK
 content-type: application/x-ndjson
-link: <http://localhost:8000/topics/data>; rel="self", <http://localhost:8000/hub>; rel="hub"
+link: <http://localhost:8484/topics/data>; rel="self", <http://localhost:8484/hub>; rel="hub"
 
 {"@id":"http://example.org/alice","@type":"foaf:Person"}
 {"@id":"http://example.org/alice","foaf:name":"Alice"}
@@ -387,7 +387,7 @@ deployments bring their own write path (SPARQL UPDATE endpoint, ETL)
 that publishes the same way — see scaling.md §2.
 
 ```sh
-curl -X POST http://localhost:8000/admin/insert \
+curl -X POST http://localhost:8484/admin/insert \
   -H "Authorization: Bearer demo-write-token" \
   -H "Content-Type: application/json" \
   -d '{"subject":"http://example.org/carol","predicate":"http://xmlns.com/foaf/0.1/knows","object":"http://example.org/alice"}'

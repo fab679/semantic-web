@@ -21,7 +21,7 @@ Requirements:
 
 Environment:
     TOGETHER_API_KEY   your Together AI key
-    SEMWEB_URL         default http://localhost:8000
+    SEMWEB_URL         default http://localhost:8484 (dedicated project port)
     SEMWEB_MODEL       default meta-llama/Llama-3.3-70B-Instruct-Turbo
     SEMWEB_WRITE_TOKEN write token, if the deployment gates writes (the
                        agent attaches it to insert_triple calls)
@@ -40,7 +40,7 @@ import threading
 import requests
 from together import Together
 
-SEMWEB = os.environ.get("SEMWEB_URL", "http://localhost:8000")
+SEMWEB = os.environ.get("SEMWEB_URL", "http://localhost:8484")
 MODEL = os.environ.get("SEMWEB_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
 WRITE_TOKEN = os.environ.get("SEMWEB_WRITE_TOKEN")
 TOOL_LOOP_BUDGET = 8

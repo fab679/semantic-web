@@ -108,10 +108,10 @@ their understanding safely instead of guessing.
 ```sh
 docker compose up --build -d          # store + service
 
-curl http://localhost:8000/            # what exists? (live)
-curl "http://localhost:8000/fragments?predicate=http://schema.org/worksFor"
-curl http://localhost:8000/manifest    # the agent manifest
-curl -X POST http://localhost:8000/hub -d "hub.mode=subscribe" ...   # real-time
+curl http://localhost:8484/            # what exists? (live)
+curl "http://localhost:8484/fragments?predicate=http://schema.org/worksFor"
+curl http://localhost:8484/manifest    # the agent manifest
+curl -X POST http://localhost:8484/hub -d "hub.mode=subscribe" ...   # real-time
 ```
 
 ---

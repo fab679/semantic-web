@@ -70,12 +70,12 @@ docker compose up --build
 
 Oxigraph serves the SPARQL 1.1 Protocol at <http://localhost:7878>
 (web UI at <http://localhost:7878>), the service at
-<http://localhost:8000>.
+<http://localhost:8484>.
 
 ```sh
-curl http://localhost:8000/manifest                                           # agent manifest
-curl http://localhost:8000/                                                   # live self-description
-curl "http://localhost:8000/fragments?predicate=http://schema.org/worksFor"   # streamed fragment
+curl http://localhost:8484/manifest                                           # agent manifest
+curl http://localhost:8484/                                                   # live self-description
+curl "http://localhost:8484/fragments?predicate=http://schema.org/worksFor"   # streamed fragment
 ```
 
 ### Locally (against a running Oxigraph)
@@ -97,13 +97,13 @@ cargo run -p semweb
 ```sh
 docker compose --profile demo up -d        # adds demo-subscriber to the network
 
-curl -X POST http://localhost:8000/hub \
+curl -X POST http://localhost:8484/hub \
   -d "hub.mode=subscribe" \
-  -d "hub.topic=http://localhost:8000/topics/data" \
+  -d "hub.topic=http://localhost:8484/topics/data" \
   -d "hub.callback=http://demo-subscriber:9000/callback" \
   -d "hub.secret=demo"
 
-curl -X POST http://localhost:8000/admin/insert \
+curl -X POST http://localhost:8484/admin/insert \
   -H "Content-Type: application/json" \
   -d '{"subject":"http://example.org/erin","predicate":"http://xmlns.com/foaf/0.1/knows","object":"http://example.org/alice"}'
 
@@ -119,7 +119,7 @@ Inserts need the configured write token (compose sets
 `SEMWEB_WRITE_TOKEN: demo-write-token`):
 
 ```sh
-curl -X POST http://localhost:8000/admin/insert \
+curl -X POST http://localhost:8484/admin/insert \
   -H "Authorization: Bearer demo-write-token" \
   -H "Content-Type: application/json" \
   -d '{"subject":"http://example.org/erin","predicate":"http://xmlns.com/foaf/0.1/knows","object":"http://example.org/alice"}'

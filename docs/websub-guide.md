@@ -25,9 +25,9 @@ topology. Your subscribers can run anywhere HTTP can reach.
 ## Subscribing
 
 ```sh
-curl -X POST http://localhost:8000/hub \
+curl -X POST http://localhost:8484/hub \
   -d "hub.mode=subscribe" \
-  -d "hub.topic=http://localhost:8000/topics/data" \
+  -d "hub.topic=http://localhost:8484/topics/data" \
   -d "hub.callback=https://myapp.example/webhook/graph" \
   -d "hub.secret=my-hmac-secret" \
   -d "hub.lease_seconds=86400"

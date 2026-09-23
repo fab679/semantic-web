@@ -39,11 +39,12 @@ services:
   semantic-web:
     build: .
     ports:
-      - "8000:8000"
+      - "8484:8000"
     environment:
+      SEMWEB_PORT: "8000"   # container-internal listener; host maps 8484->8000
       SEMWEB_SPARQL_ENDPOINT: http://oxigraph:7878/query
       SEMWEB_SPARQL_UPDATE: http://oxigraph:7878/update
-      SEMWEB_PUBLIC_URL: http://localhost:8000
+      SEMWEB_PUBLIC_URL: http://localhost:8484
       SEMWEB_SEED_PATH: /app/sample_data.ttl
       # SHACL shapes -> SHAPES_GRAPH, surfaced by GET /manifest and /mcp.
       SEMWEB_SHACL_PATH: /app/shapes.ttl
@@ -74,9 +75,9 @@ services:
   # full publish/subscribe loop can be exercised end to end with no host
   # networking involved:
   #   docker compose --profile demo up -d
-  #   curl -X POST http://localhost:8000/hub \
+  #   curl -X POST http://localhost:8484/hub \
   #     -d "hub.mode=subscribe" \
-  #     -d "hub.topic=http://localhost:8000/topics/data" \
+  #     -d "hub.topic=http://localhost:8484/topics/data" \
   #     -d "hub.callback=http://demo-subscriber:9000/callback" \
   #     -d "hub.secret=demo"
   #   docker compose logs -f demo-subscriber
@@ -99,11 +100,12 @@ services:
   semantic-web-2:
     build: .
     ports:
-      - "8011:8000"
+      - "8485:8000"
     environment:
+      SEMWEB_PORT: "8000"
       SEMWEB_SPARQL_ENDPOINT: http://oxigraph:7878/query
       SEMWEB_SPARQL_UPDATE: http://oxigraph:7878/update
-      SEMWEB_PUBLIC_URL: http://localhost:8011
+      SEMWEB_PUBLIC_URL: http://localhost:8485
       SEMWEB_SEED_PATH: /app/sample_data.ttl
       SEMWEB_WRITE_TOKEN: demo-write-token
       SEMWEB_SECRET_KEY: 5f4d3c2b1a0987654321fedcba9876543210fedcba9876543210abcdef123456

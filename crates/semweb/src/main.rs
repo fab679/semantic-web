@@ -28,10 +28,13 @@ async fn main() {
         )
         .init();
 
+    // Dedicated project port: 8484 (docker maps host 8484 -> container
+    // 8000; local `cargo run` defaults to 8484 directly so no mapping is
+    // needed and the project never conflicts with anything else).
     let port: u16 = std::env::var("SEMWEB_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(8000);
+        .unwrap_or(8484);
     let state = Arc::new(build_state());
 
     tracing::info!(
