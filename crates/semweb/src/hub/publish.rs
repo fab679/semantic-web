@@ -1,16 +1,41 @@
-//! Publish fan-out (spec §6/§7): build topic content once, log each
-//! delivery durably, enqueue for this replica's shard, broadcast SSE.
-//! Content building lives here (not in the api layer) so the durable-log
-//! redelivery path can rebuild it.
+//! Publish fan-out (spec §6/§7).
+//!
+//! Two publish paths, one fan-out:
+//!   - `publish` (canonical topics): rebuild content from the store.
+//!   - `publish_external` (open-hub policy): the publisher told us
+//!     `hub.mode=publish&hub.url=<topic>`; per spec §7 the hub sends "the
+//!     full contents of the topic URL", so the topic resource is fetched
+//!     at publish time and distributed exactly as served by the
+//!     publisher (Content-Type preserved).
+//!
+//! Both: durable-log every owned delivery, enqueue, broadcast SSE, and
+//! notify configured external hubs (§4 fault tolerance: "the publisher
+//! notifies each hub").
 
-use std::sync::Arc;
-
-use crate::hub::verification;
-use crate::hub::{resolve_topic, Delivery, Hub, SseEvent, TopicContent, TOPICS};
-use crate::store::persistence::subscription_persist_id;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
+
+use crate::hub::MAX_EXTERNAL_CONTENT_BYTES;
+use crate::hub::{resolve_topic, topic_matches, Delivery, Hub, SseEvent, TopicContent, TOPICS};
+use crate::store::persistence::subscription_persist_id;
 
 impl Hub {
+    /// Content for any topic: canonical topics rebuild from the store;
+    /// third-party topics (open hub) fetch the publisher's URL (§7).
+    pub async fn build_topic_content_or_fetch(
+        &self,
+        topic: &str,
+    ) -> Result<TopicContent, String> {
+        if resolve_topic(topic).is_some() {
+            self.build_topic_content(topic).await.map_err(|e| e.0)
+        } else {
+            self.fetch_external_content(topic).await
+        }
+    }
+
+    /// Publish a canonical topic (§6): rebuild content from the store and
+    /// fan out. Also notifies any configured external hubs.
     pub async fn publish(self: Arc<Self>, topic: &'static str, event_id: &str) -> usize {
         let content = match self.build_topic_content(topic).await {
             Ok(c) => c,
@@ -19,9 +44,67 @@ impl Hub {
                 return 0;
             }
         };
-        let self_url = format!("{}{topic}", self.config.public_url);
+        self.fan_out(topic, content, event_id).await
+    }
+
+    /// Publish a THIRD-PARTY topic (open-hub policy): per spec §7 the hub
+    /// sends "the full contents of the topic URL", so the topic resource
+    /// is fetched at publish time and distributed exactly as served.
+    pub async fn publish_external(self: Arc<Self>, topic: &str, event_id: &str) -> usize {
+        let content = match self.fetch_external_content(topic).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!(event = event_id, topic, "publish skipped: {e:?}");
+                return 0;
+            }
+        };
+        self.fan_out(topic, content, event_id).await
+    }
+
+    async fn fetch_external_content(&self, topic: &str) -> Result<TopicContent, String> {
+        let resp = self
+            .http
+            .get(topic)
+            .timeout(Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|e| format!("topic fetch failed: {e}"))?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(format!("topic fetch -> {status}"));
+        }
+        // §7: the Content-Type of the distribution MUST match the topic's.
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.split(';').next().unwrap_or(v).trim().to_string())
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        let body = resp.bytes().await.map_err(|e| e.to_string())?;
+        // Sanity cap so a huge third-party topic cannot exhaust memory.
+        if body.len() > MAX_EXTERNAL_CONTENT_BYTES {
+            return Err("topic content exceeds the size cap".to_string());
+        }
+        Ok(TopicContent {
+            body: body.to_vec(),
+            content_type,
+        })
+    }
+
+    /// Shared fan-out: durable-log + queue + SSE for all owned subscribers
+    /// of `topic`, plus metrics. Canonical topics mint `rel=self` from our
+    /// public URL; third-party topics use the PUBLISHER's canonical URL
+    /// (the topic URL itself, per §7's "Link headers are metadata of the
+    /// topic, not of the subscription").
+    async fn fan_out(self: Arc<Self>, topic: &str, content: TopicContent, event_id: &str) -> usize {
+        let topic = topic.to_string();
+        let self_url = if resolve_topic(&topic).is_some() {
+            format!("{}{topic}", self.config.public_url)
+        } else {
+            topic.to_string()
+        };
         let hub_url = format!("{}/hub", self.config.public_url);
-        let subs = self.owned_subs(topic).await;
+        let subs = self.owned_subs(&topic).await;
         // Observability: subscriptions this replica did NOT deliver for
         // (owned by other replicas sharing the store).
         let total_active = self
@@ -30,7 +113,7 @@ impl Hub {
             .await
             .iter()
             .filter(|((sub_topic, _), sub)| {
-                resolve_topic(sub_topic) == Some(topic)
+                topic_matches(sub_topic, &topic)
                     && sub.lease_expires > std::time::Instant::now()
             })
             .count();
@@ -41,14 +124,14 @@ impl Hub {
         }
         let mut scheduled = 0;
         for (callback, secret) in subs {
-            let id = subscription_persist_id(topic, &callback);
+            let id = subscription_persist_id(&topic, &callback);
             let stored_secret = secret.as_deref().map(|s| self.crypto.encrypt(s));
             // Durable log FIRST: a crash between log and delivery causes
             // redelivery on startup (at-least-once semantics).
             let rec = crate::store::DeliveryRecord {
                 id: &id,
                 event_id,
-                topic,
+                topic: &topic,
                 callback: &callback,
                 secret: stored_secret.as_deref(),
                 self_url: &self_url,
@@ -66,7 +149,7 @@ impl Hub {
             }
             let delivery = Delivery {
                 id: id.clone(),
-                topic,
+                topic: topic.clone(),
                 callback,
                 secret,
                 content: content.clone(),
@@ -83,7 +166,7 @@ impl Hub {
                     self.metrics.queue_dropped.fetch_add(1, Ordering::Relaxed);
                     tracing::error!(
                         event = event_id,
-                        topic,
+                        topic = &topic,
                         "delivery queue full; notification kept in the durable log \
                          (redelivered on restart)"
                     );
@@ -91,17 +174,53 @@ impl Hub {
             }
         }
         let _ = self.broadcast.send(SseEvent {
-            topic: topic.to_string(),
+            topic: topic.clone(),
             event_id: event_id.to_string(),
         });
         scheduled
     }
 
-    /// Full topic content (§7: the hub MUST send the full
+    /// §4 fault tolerance: a publisher MAY use more than one hub. Our hub
+    /// advertises every configured hub and notifies the external ones on
+    /// each mutation (fire-and-forget POSTs, the common §6 convention).
+    pub fn notify_external_hubs(self: Arc<Self>, topic: &str, event_id: &str) {
+        for hub_url in self.external_hubs() {
+            let hub = self.clone();
+            let (topic, event_id, hub_url) =
+                (topic.to_string(), event_id.to_string(), hub_url);
+            tokio::spawn(async move {
+                if let Err(e) = hub
+                    .http
+                    .post(hub_url.clone())
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(format!(
+                        "hub.mode=publish&hub.url={}",
+                        urlencoding::encode(&topic)
+                    ))
+                    .send()
+                    .await
+                {
+                    tracing::warn!(event = event_id, hub = hub_url, "external hub notify failed: {e}");
+                } else {
+                    tracing::info!(event = event_id, hub = hub_url, topic, "external hub notified");
+                }
+            });
+        }
+    }
+}
+
+use crate::hub::verification;
+
+impl Hub {
+    /// The full topic content (§7: the hub MUST send the full
     /// contents of the topic URL; diffs are only allowed for Atom/RSS, so
-    /// JSON/NDJSON topics get the full body). Lives here (not in the api
-    /// layer) so the durable-log redelivery path can rebuild content.
-    pub async fn build_topic_content(&self, topic: &str) -> Result<TopicContent, crate::store::StoreError> {
+    /// JSON/NDJSON topics get the full body). Canonical topics are built
+    /// from the store; lives here so the durable-log redelivery path can
+    /// rebuild content.
+    pub async fn build_topic_content(
+        &self,
+        topic: &str,
+    ) -> Result<TopicContent, crate::store::StoreError> {
         match topic {
             "/topics/data" => {
                 let bindings = self.store.all_bindings().await?;
@@ -114,7 +233,7 @@ impl Hub {
                 }
                 Ok(TopicContent {
                     body: body.into_bytes(),
-                    content_type: "application/x-ndjson",
+                    content_type: "application/x-ndjson".to_string(),
                 })
             }
             "/topics/schema" => {
@@ -136,10 +255,13 @@ impl Hub {
                 });
                 Ok(TopicContent {
                     body: serde_json::to_vec(&schema).unwrap_or_default(),
-                    content_type: "application/json",
+                    content_type: "application/json".to_string(),
                 })
             }
-            _ => Err(crate::store::StoreError(format!("unknown topic: {topic}"))),
+            _ => Err(crate::store::StoreError(format!(
+                "unknown topic: {topic} \
+                 (third-party topics are fetched at publish time, not here)"
+            ))),
         }
     }
 }

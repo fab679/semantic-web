@@ -63,6 +63,10 @@ pub async fn admin_insert(
     // ontology surface changed, publish /topics/schema as well so
     // subscribers can distinguish "new data" from "the shape of the
     // graph changed" without inspecting every triple.
+    state.hub.clone().notify_external_hubs("/topics/data", &event_id);
+    if schema_changed {
+        state.hub.clone().notify_external_hubs("/topics/schema", &event_id);
+    }
     let data_notified = state.hub.clone().publish("/topics/data", &event_id).await;
     let schema_notified = if schema_changed {
         state.hub.clone().publish("/topics/schema", &event_id).await

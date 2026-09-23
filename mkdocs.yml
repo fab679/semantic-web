@@ -32,6 +32,7 @@ nav:
       - Quickstart: getting-started.md
   - For developers:
       - Reading the graph: for-developers.md
+      - Federation (decentralized WebSub): federation.md
       - API reference: api.md
       - Real-time push (WebSub): websub-guide.md
   - For agents:

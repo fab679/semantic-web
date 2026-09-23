@@ -77,8 +77,18 @@ pub(crate) fn counters_insert() {
 /// allows combining; subscribers must handle either form).
 pub(crate) fn discovery_headers(state: &AppState, topic_path: &str) -> HeaderMap {
     let self_url = format!("{}{topic_path}", state.public_url);
-    let hub_url = format!("{}/hub", state.public_url);
-    let value = format!("<{self_url}>; rel=\"self\", <{hub_url}>; rel=\"hub\"");
+    // §4: at least one rel=hub; a publisher MAY advertise several for
+    // fault tolerance, and subscribers may subscribe at any of them.
+    let mut hubs = vec![format!("{}/hub", state.public_url)];
+    for h in state.hub.external_hubs() {
+        hubs.push(h);
+    }
+    let hub_links = hubs
+        .iter()
+        .map(|h| format!("<{h}>; rel=\"hub\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let value = format!("<{self_url}>; rel=\"self\", {hub_links}");
     let mut headers = HeaderMap::new();
     headers.insert(
         header::LINK,

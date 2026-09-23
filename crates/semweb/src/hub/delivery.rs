@@ -80,7 +80,7 @@ pub(crate) async fn deliver_one(hub: Arc<Hub>, delivery: Delivery, worker: usize
             .http
             .post(&callback)
             .header("Link", &link)
-            .header("Content-Type", content.content_type);
+            .header("Content-Type", &content.content_type);
         if let Some(secret) = &secret {
             if let Some(header) = signature_header(secret, &content.body) {
                 req = req.header("X-Hub-Signature", header);
@@ -103,7 +103,7 @@ pub(crate) async fn deliver_one(hub: Arc<Hub>, delivery: Delivery, worker: usize
             Ok(resp) if resp.status().as_u16() == 410 => {
                 hub.metrics.terminated_410.fetch_add(1, Ordering::Relaxed);
                 tracing::info!(event = event_id, callback, "410 Gone; terminating subscription");
-                hub.remove_sub(topic, &callback).await;
+                hub.remove_sub(&topic, &callback).await;
                 ack(&hub, &id, &event_id, &callback, worker).await;
                 return;
             }

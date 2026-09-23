@@ -74,6 +74,16 @@ pub fn build_state() -> AppState {
         HubConfig {
             queue_capacity,
             workers,
+            external_hubs: std::env::var("SEMWEB_HUB_URLS")
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect(),
+            open_hub: std::env::var("SEMWEB_OPEN_HUB")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
             replica_count,
             replica_index,
             public_url: public_url.clone(),

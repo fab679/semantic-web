@@ -88,7 +88,7 @@ pub(crate) async fn verify_and_commit(
     // §5.2: subscriptions MAY be denied by the hub at any point. If the
     // topic is no longer available at verification time, deny explicitly
     // instead of leaving the subscriber waiting.
-    if super::resolve_topic(submitted_topic).is_none() {
+    if super::topic_allowed(submitted_topic, hub.config().open_hub).is_none() {
         hub.send_denied(callback, submitted_topic, "topic is no longer available")
             .await;
         return;

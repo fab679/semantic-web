@@ -72,8 +72,12 @@ pub(crate) mod metrics;
 
 /// The topics this service publishes. Spec §1: a topic is an HTTP
 /// resource URL -- served with full content at `GET /topics/...` and
-/// advertised via Link headers (spec §4).
+/// advertised via Link headers (spec §4). With the open-hub policy,
+/// third-party topics (any publisher's URL) are accepted too.
 pub const TOPICS: [&str; 2] = ["/topics/data", "/topics/schema"];
+
+/// Sanity cap on third-party topic content fetched at publish time.
+pub const MAX_EXTERNAL_CONTENT_BYTES: usize = 16 * 1024 * 1024; // 16 MiB
 
 #[derive(Debug)]
 pub enum HubError {
@@ -104,7 +108,35 @@ pub(crate) enum Intent {
 #[derive(Clone)]
 pub struct TopicContent {
     pub body: Vec<u8>,
-    pub content_type: &'static str,
+    /// String (not &'static) because third-party topics fetch their
+    /// content type from the publisher's response at publish time.
+    pub content_type: String,
+}
+
+/// §5.1 hub policy for a submitted hub.topic:
+///   - canonical topics (ours) are always accepted;
+///   - with the open-hub policy (SEMWEB_OPEN_HUB), any http(s) topic URL
+///     is accepted too -- the hub then serves third-party publishers
+///     (spec §1: "Any hub MAY implement its own policies on who can use
+///     it"). Returns the accepted topic unchanged.
+pub fn topic_allowed(topic: &str, open_hub: bool) -> Option<String> {
+    if resolve_topic(topic).is_some() {
+        return Some(topic.to_string());
+    }
+    if open_hub && (topic.starts_with("http://") || topic.starts_with("https://")) {
+        return Some(topic.to_string());
+    }
+    None
+}
+
+/// Does a subscribed topic match a publishing topic? Canonical topics
+/// match loosely (bare path == absolute URL); third-party topics match
+/// exactly (both sides are the publisher's canonical rel=self URL).
+pub(crate) fn topic_matches(subscribed: &str, publishing: &str) -> bool {
+    if resolve_topic(subscribed).is_some() {
+        return resolve_topic(publishing) == resolve_topic(subscribed);
+    }
+    subscribed == publishing
 }
 
 #[derive(Clone)]
@@ -122,7 +154,7 @@ pub struct Subscription {
 pub(crate) struct Delivery {
     /// Durable-log id (ack key).
     id: String,
-    topic: &'static str,
+    topic: String,
     callback: String,
     secret: Option<String>,
     content: TopicContent,
@@ -147,6 +179,12 @@ pub struct SseEvent {
 pub struct HubConfig {
     pub queue_capacity: usize,
     pub workers: usize,
+    /// §4 fault tolerance: external hubs we advertise and notify on every
+    /// mutation (e.g. a public hub like Superfeedr). Empty = only ours.
+    pub external_hubs: Vec<String>,
+    /// §5.1 policy: accept third-party topics (any publisher's URL) —
+    /// turns this hub into a general-purpose hub for anyone's content.
+    pub open_hub: bool,
     /// Sharding: total replica count and this replica's index.
     pub replica_count: u64,
     pub replica_index: u64,
@@ -221,6 +259,16 @@ impl Hub {
         self.broadcast.subscribe()
     }
 
+    /// External hub URLs (absolute; ours excluded) for §4 advertise+notify.
+    pub fn external_hubs(&self) -> Vec<String> {
+        self.config
+            .external_hubs
+            .iter()
+            .map(|h| h.trim_end_matches('/').to_string())
+            .filter(|h| !h.is_empty() && h != &format!("{}/hub", self.config.public_url))
+            .collect()
+    }
+
     /// True when THIS replica owns (delivers for) the given subscription.
     fn owns(&self, topic: &str, callback: &str) -> bool {
         let id = subscription_persist_id(topic, callback);
@@ -241,8 +289,11 @@ impl Hub {
     }
 
 /// Snapshot of active (unexpired), replica-owned subscriptions for a
-    /// canonical topic: (callback, secret) pairs ready for fan-out.
-    async fn owned_subs(&self, topic: &'static str) -> Vec<(String, Option<String>)> {
+    /// topic (canonical or third-party): (callback, secret) pairs ready
+    /// for fan-out. Matching is by the exact submitted topic string --
+    /// third-party topics are subscribed with the publisher's canonical
+    /// rel=self URL, so no normalization is possible (or needed).
+    async fn owned_subs(&self, topic: &str) -> Vec<(String, Option<String>)> {
         let now = Instant::now();
         let (count, index) = (self.config.replica_count, self.config.replica_index);
         self.subs
@@ -250,7 +301,7 @@ impl Hub {
             .await
             .iter()
             .filter(|((sub_topic, callback), sub)| {
-                resolve_topic(sub_topic) == Some(topic)
+                topic_matches(sub_topic, topic)
                     && sub.lease_expires > now
                     && owner_of(&subscription_persist_id(sub_topic, callback), count) == index
             })
@@ -273,7 +324,7 @@ impl Hub {
         secret: Option<String>,
         requested_lease: Option<u64>,
     ) -> Result<(), HubError> {
-        let canonical = resolve_topic(&topic)
+        let canonical = topic_allowed(&topic, self.config.open_hub)
             .ok_or_else(|| HubError::UnknownTopic(format!("unknown topic: {topic}")))?;
 
         // §5.1 policy enforcement (hubs MAY reject callback/topic URLs):
@@ -322,7 +373,7 @@ impl Hub {
     /// verification dance; lease_seconds MUST be ignored for
     /// unsubscription, so none is sent in the verification request.
     pub async fn unsubscribe(self: Arc<Self>, topic: String, callback: String) -> Result<(), HubError> {
-        let canonical = resolve_topic(&topic)
+        let canonical = topic_allowed(&topic, self.config.open_hub)
             .ok_or_else(|| HubError::UnknownTopic(format!("unknown topic: {topic}")))?;
         let canonical = canonical.to_string();
         let hub = self.clone();
@@ -441,6 +492,28 @@ mod tests {
         );
         assert_eq!(resolve_topic("http://other/topics/schema"), Some("/topics/schema"));
         assert_eq!(resolve_topic("/topics/nope"), None);
+    }
+
+    #[test]
+    fn topic_policy_respects_the_open_hub_flag() {
+        // §5.1: "Any hub MAY implement its own policies on who can use it"
+        // canonical topics always accepted
+        assert!(topic_allowed("/topics/data", false).is_some());
+        assert!(topic_allowed("http://x/topics/data", false).is_some());
+        // third-party topics only under the open-hub policy
+        assert!(topic_allowed("https://other.example/feed.xml", false).is_none());
+        assert!(topic_allowed("https://other.example/feed.xml", true).is_some());
+        // and never non-URL garbage
+        assert!(topic_allowed("not-a-url", true).is_none());
+    }
+
+    #[test]
+    fn topic_matching_canonical_vs_third_party() {
+        assert!(topic_matches("/topics/data", "http://localhost:8484/topics/data"));
+        assert!(topic_matches("http://localhost:8484/topics/schema", "/topics/schema"));
+        // third-party: exact match only
+        assert!(topic_matches("https://a.example/feed", "https://a.example/feed"));
+        assert!(!topic_matches("https://a.example/feed", "https://b.example/feed"));
     }
 
     #[test]

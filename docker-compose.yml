@@ -46,6 +46,9 @@ services:
       SEMWEB_SPARQL_UPDATE: http://oxigraph:7878/update
       SEMWEB_PUBLIC_URL: http://localhost:8484
       SEMWEB_SEED_PATH: /app/sample_data.ttl
+      # Federation: open-hub policy + external hub fan-out (see docs/federation.md)
+      SEMWEB_OPEN_HUB: ${SEMWEB_OPEN_HUB:-0}
+      SEMWEB_HUB_URLS: ${SEMWEB_HUB_URLS:-}
       # SHACL shapes -> SHAPES_GRAPH, surfaced by GET /manifest and /mcp.
       SEMWEB_SHACL_PATH: /app/shapes.ttl
       # Mutating endpoints (POST /admin/insert) require this bearer token.

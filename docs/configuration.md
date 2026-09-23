@@ -29,6 +29,8 @@ files, no recompiles. Defaults in parentheses.
 | `SEMWEB_SECRET_KEY` | unset (plaintext at rest) | 64-hex-char (32-byte) AES-256-GCM key; encrypts subscriber secrets in the store. Generate: `openssl rand -hex 32` |
 | `SEMWEB_REQUIRE_HTTPS_CALLBACKS` | `false` | reject `http://` callbacks that register a `hub.secret` (spec §8.2 recommends HTTPS) |
 | `SEMWEB_CALLBACK_ALLOWLIST` | empty (allow all) | comma-separated callback host suffixes, e.g. `mysvc.example.com,api.example.org` |
+| `SEMWEB_OPEN_HUB` | `false` | accept third-party topics (any publisher's URL) — the hub serves external publishers (§5.1 policy); content fetched at publish time |
+| `SEMWEB_HUB_URLS` | empty (only ours) | comma-separated external hubs advertised in Link headers and notified on every mutation (§4 fault tolerance / §6) |
 
 Lease policy is hub-fixed per spec §5.3: requested leases clamped to
 [60s, 10 days], default 1 day; expiry enforced by a 30s sweeper.

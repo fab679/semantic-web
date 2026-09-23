@@ -12,7 +12,7 @@ use axum::Form;
 use serde_json::json;
 
 use crate::api::{discovery_headers, hub_error, internal, SharedState};
-use crate::hub::{resolve_topic, TOPICS};
+use crate::hub::{topic_allowed, resolve_topic, TOPICS};
 
 pub async fn hub_post(
     State(state): SharedState,
@@ -38,17 +38,25 @@ pub async fn hub_post(
         Some("publish") => {
             // §6: the publisher informs the hub a topic changed. The
             // spec leaves the mechanism unspecified; hub.mode=publish +
-            // hub.url is the widely-used convention. The hub rebuilds
-            // the topic content at publish time and fans out.
+            // hub.url is the widely-used convention. Canonical topics
+            // rebuild from the store; third-party topics (open-hub
+            // policy) are FETCHED from the publisher's URL per §7.
             let url = params.get("hub.url").map(String::as_str).unwrap_or("");
-            let topic = resolve_topic(url).ok_or_else(|| {
-                (StatusCode::BAD_REQUEST, "hub.url does not resolve to a known topic".to_string())
-            })?;
-            state
-                .hub
-                .clone()
-                .publish(topic, &crate::hub::random_event_id())
-                .await;
+            let event_id = crate::hub::random_event_id();
+            let scheduled = match resolve_topic(url) {
+                Some(topic) => state.hub.clone().publish(topic, &event_id).await,
+                None => {
+                    if topic_allowed(url, state.hub.config().open_hub).is_some() {
+                        state.hub.clone().publish_external(url, &event_id).await
+                    } else {
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            "hub.url does not resolve to a known topic".to_string(),
+                        ));
+                    }
+                }
+            };
+            tracing::info!(event = event_id, hub_url = url, scheduled, "publish accepted");
             Ok(StatusCode::ACCEPTED.into_response())
         }
         Some(mode @ ("subscribe" | "unsubscribe")) => {
@@ -66,6 +74,23 @@ pub async fn hub_post(
                 .get("hub.lease_seconds")
                 .and_then(|s| s.parse::<u64>().ok());
 
+            // §5.1: "Any hub MAY implement its own policies on who can use
+            // it" -- canonical topics always; third-party topics only under
+            // the open-hub policy.
+            let accepted = topic_allowed(topic, state.hub.config().open_hub);
+            if accepted.is_none() && resolve_topic(topic).is_none() {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    format!(
+                        "unknown topic: {topic}{}",
+                        if state.hub.config().open_hub {
+                            ""
+                        } else {
+                            " (third-party topics require SEMWEB_OPEN_HUB)"
+                        }
+                    ),
+                ));
+            }
             let result = match mode {
                 "subscribe" => {
                     state
