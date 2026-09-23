@@ -58,7 +58,7 @@ Class/predicate URIs are compacted through the namespace prefix table
 (standards vocabularies → `prefix:local` CURIEs; unknown namespaces
 stay full URIs). Adding a term from a known vocabulary requires no code
 change; a new namespace gets a prefix via `SEMWEX_EXTRA_PREFIXES`/
-`SEMWWEB_EXTRA_PREFIXES` at runtime.
+`SEMWEB_EXTRA_PREFIXES` at runtime.
 
 ---
 

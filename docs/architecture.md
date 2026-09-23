@@ -196,7 +196,7 @@ Consumers should never read raw URIs. Compaction is prefix-based:
   `schema:address`, `rdfs:seeAlso`, …) with zero code changes.
 - **Unknown namespaces stay full URIs** — honest and stable, no
   invented names. A private namespace can be given a friendly prefix at
-  runtime via `SEMWEX_EXTRA_PREFIXES`/`SEMWWEB_EXTRA_PREFIXES`
+  runtime via `SEMWEB_EXTRA_PREFIXES`
   (`name=namespace`, comma-separated) without recompiling.
 - `rdf:type` compacts to `@type` (standard JSON-LD convention).
 - Typed literals keep their datatype (`xsd:date`), language-tagged
@@ -283,7 +283,7 @@ lines, everything is editable in isolation.
   URLs), `SEMWEB_SEED_PATH` (optional Turtle seed, loaded via the Graph
   Store Protocol with `?default` — load-bearing: a bare GSP POST to
   oxigraph 0.5.10 lands in a server-generated named graph), and
-  `SEMWEX_EXTRA_PREFIXES`/`SEMWWEB_EXTRA_PREFIXES` for runtime prefix
+  `SEMWEB_EXTRA_PREFIXES` for runtime prefix
   registration.
 
 The WebSub demo profile adds **demo-subscriber** so the full
