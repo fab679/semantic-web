@@ -109,6 +109,18 @@ impl PrefixMap {
         }
     }
 
+    /// Registered (prefix, namespace) pairs for the namespaces currently
+    /// in use -- what /manifest exposes so agents can write valid SPARQL
+    /// PREFIX declarations.
+    pub fn prefix_pairs(&self, namespaces: &[String]) -> Vec<(String, String)> {
+        let mut pairs: Vec<(String, String)> = namespaces
+            .iter()
+            .filter_map(|ns| self.prefix_for(ns).map(|p| (p, ns.clone())))
+            .collect();
+        pairs.sort();
+        pairs
+    }
+
     /// The prefix for a namespace, if one is registered.
     fn prefix_for(&self, ns: &str) -> Option<String> {
         for (name, std_ns) in STD_PREFIXES {

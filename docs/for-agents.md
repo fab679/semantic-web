@@ -19,6 +19,7 @@ detect that its understanding went stale.
 ```json
 {
   "schemaFingerprint": "sha256:9beb...",
+  "prefixes": [["foaf", "http://xmlns.com/foaf/0.1/"], ["schema", "http://schema.org/"]],
   "classes": [{
     "compact": "foaf:Person",
     "instances": 3,
@@ -36,7 +37,8 @@ detect that its understanding went stale.
 - **SPARQL** (`GET /sparql?query=...`) — read-only, for multi-hop or
   aggregate questions. SPARQL is *fine* for LLMs to write; the hard part
   was never the query language — it was knowing the vocabulary, which the
-  manifest solves.
+  manifest solves (including the `prefixes` block to declare at the top
+  of queries, and the case-sensitive URIs to copy verbatim).
 
 ### 3. Real-time — WebSub and SSE
 

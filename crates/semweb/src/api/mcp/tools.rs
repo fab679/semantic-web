@@ -156,7 +156,17 @@ async fn sparql_query(state: &AppState, args: &Value) -> Value {
         _ => return super::tool_error("query is required"),
     };
     match state.store.query_raw(query, "application/sparql-results+json").await {
-        Ok((status, _, body)) if (200..300).contains(&status) => super::tool_text(body),
+        Ok((status, _, body)) if (200..300).contains(&status) => {
+            // Teach, don't just return {}: an empty result usually means a
+            // mistyped URI (casing), not absence of data.
+            let empty = body.contains("\"bindings\":[]") || body.contains("\"bindings\": []");
+            let hint = if empty {
+                "\n\nNOTE: 0 results. Either the graph truly lacks this, or a URI is                  mistyped (URIs are case-sensitive). Re-check exact URIs in get_manifest                  or run search_graph to discover them."
+            } else {
+                ""
+            };
+            super::tool_text(format!("{body}{hint}"))
+        }
         Ok((status, _, body)) => super::tool_error(&format!("store returned {status}: {body}")),
         Err(e) => super::tool_error(&e.0),
     }

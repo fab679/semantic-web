@@ -76,11 +76,17 @@ pub(crate) async fn manifest_document(
         })
         .collect();
 
+    // SPARQL prefixes: what agents can (and should) PREFIX-declare. Derived
+    // from the namespaces in use -- only registered prefixes are listed.
+    let namespaces = crate::context::namespaces_of(&info.class_uris, &info.predicate_uris);
+    let prefixes = state.prefixes.prefix_pairs(&namespaces);
+
     Ok(json!({
         "@context": "/context.jsonld",
         "kind": "agent-manifest",
         "generatedFrom": "live store state (not a cached build)",
         "schemaFingerprint": fingerprint,
+        "prefixes": prefixes,
         "classes": classes,
         "predicates": predicates,
         "topics": crate::hub::TOPICS,

@@ -158,6 +158,7 @@ regenerated live on every request:
   "@context": "/context.jsonld",
   "kind": "agent-manifest",
   "schemaFingerprint": "sha256:9beb...",
+  "prefixes": [["foaf", "http://xmlns.com/foaf/0.1/"], ["schema", "http://schema.org/"]],
   "classes": [
     {
       "uri": "http://xmlns.com/foaf/0.1/Person",

@@ -83,7 +83,19 @@ system = make_system_prompt(manifest, guidance)
 ```
 
 The manifest is what makes the LLM reliable: it names every term, explains
-it in human language, and hands it example queries.
+it in human language, hands it example queries, and exposes its
+**`prefixes` block** so generated SPARQL declares
+`PREFIX foaf: <http://xmlns.com/foaf/0.1/>` correctly. The agent also
+peeks at **sample rows** (`search_graph` limit 8) before planning, so it
+copies URIs verbatim instead of guessing casing.
+
+Two failure modes the tutorial deliberately addresses (both were observed
+live):
+
+1. *Undefined SPARQL prefix* — the model wrote `schema:worksFor` without
+   declaring it → fixed by the manifest's `prefixes` block.
+2. *Narrating searches it never ran* — fixed by the system rule "every
+   fact must come from an ACTUAL tool result in this conversation".
 
 ## Step 4 — The Together AI tool loop
 
@@ -124,12 +136,13 @@ python examples/agent/agent.py "Who works at Acme and what do we know about them
 ```
 connected: semantic-web (protocol 2025-06-18)
 discovered 6 tools from the server: ['search_graph', 'sparql_query', ...]
-  [tool] get_manifest({})
-  [tool] search_graph({"predicate": "http://schema.org/worksFor", "limit": 20})
+  [tool] search_graph({"subject": "http://example.org/acme", "limit": 8})
+  [tool] search_graph({"subject": "http://example.org/alice", ...})
+  [tool] search_graph({"subject": "http://example.org/bob", ...})
 
-Agent: Acme Corp is an organization founded on 2001-04-03. Two people
-work there: Alice (http://example.org/alice) and Bob
-(http://example.org/bob)...
+Agent: The employees of Acme Corp are Alice and Bob. Alice works for
+Acme Corp, is a person, knows Bob, and her name is Alice. Bob works for
+Acme Corp, is a person, knows Carol, and his name is Bob.
 ```
 
 Watch the graph change live while the agent works:

@@ -6,8 +6,11 @@ semantic-web service's **MCP server** for its tools.
 
 The design point: the agent hardcodes **nothing** about the graph. It
 discovers its tools from the server (`tools/list`), reads the live
-manifest (`resources/read` / `get_manifest`), and plans against what the
-graph says exists.
+manifest (`resources/read` / `get_manifest`), peeks at a few real rows
+so it copies URIs verbatim, and plans against what the graph says
+exists. Configuration is automatic: the root `.env` (e.g.
+`TOGETHER_API_KEY`, `SEMWEB_WRITE_TOKEN`, `SEMWEB_URL`) is loaded on
+startup.
 
 ```
   user ──question──► agent.py ──tool loop──► Together AI (Llama 3.3 70B)

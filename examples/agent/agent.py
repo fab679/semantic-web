@@ -40,6 +40,41 @@ import threading
 import requests
 from together import Together
 
+import json
+import os
+import sys
+import threading
+
+import requests
+from together import Together
+
+def load_dotenv() -> None:
+    """Load key=value pairs from a .env file (no dependency needed):
+    looks in the current directory, then walks up to the repo root.
+    Existing environment variables always win."""
+    path = os.path.join(os.getcwd(), ".env")
+    if not os.path.exists(path):
+        d = os.getcwd()
+        while d != os.path.dirname(d):
+            d = os.path.dirname(d)
+            candidate = os.path.join(d, ".env")
+            if os.path.exists(candidate):
+                path = candidate
+                break
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key, value = key.strip(), value.strip().strip('"').strip("'")
+            os.environ.setdefault(key, value)
+
+
+load_dotenv()
+
 SEMWEB = os.environ.get("SEMWEB_URL", "http://localhost:8484")
 MODEL = os.environ.get("SEMWEB_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
 WRITE_TOKEN = os.environ.get("SEMWEB_WRITE_TOKEN")
@@ -116,7 +151,7 @@ def to_openai_tool(mcp_tool: dict) -> dict:
     }
 
 
-def make_system_prompt(manifest: str, guidance: str) -> str:
+def make_system_prompt(manifest: str, sample_rows: str, guidance: str) -> str:
     return (
         "You are a knowledge-graph assistant. You answer questions using ONLY "
         "the semantic graph behind your tools.\n\n"
@@ -125,11 +160,21 @@ def make_system_prompt(manifest: str, guidance: str) -> str:
         "constraints, cardinalities, and example SPARQL queries.\n\n"
         "Rules:\n"
         "- Ground every answer in URIs you actually saw in tool output.\n"
+        "- Every fact you state must come from an ACTUAL tool result in this "
+        "conversation. Never narrate searches you did not perform.\n"
+        "- URIs are case-sensitive: copy them EXACTLY as they appear in the "
+        "sample rows or the manifest's example queries.\n"
+        "- SPARQL needs PREFIX declarations: copy the manifest's \"prefixes\" "
+        "block at the top of your queries (e.g. PREFIX foaf: <http://xmlns.com/foaf/0.1/>).\n"
         "- Use search_graph for lookups; use sparql_query for anything the "
         "fragments cannot express; the manifest's exampleQuery is a good "
         "starting point.\n"
-        "- If the graph does not contain the answer, say so explicitly.\n\n"
+        "- An empty result usually means a wrong URI (check casing) or that "
+        "the graph truly lacks the answer -- re-check the manifest before "
+        "concluding. If a tool returns an ERROR, fix the query and call it "
+        "again instead of moving on.\n\n"
         + (f"Method guidance:\n{guidance}\n\n" if guidance else "")
+        + f"SAMPLE ROWS (actual data, copy URIs from here):\n{sample_rows}\n\n"
         + f"GRAPH MANIFEST (the fingerprint identifies this exact ontology):\n{manifest}"
     )
 
@@ -137,13 +182,18 @@ def make_system_prompt(manifest: str, guidance: str) -> str:
 def run_agent(mcp: McpClient, question: str) -> None:
     client = Together()  # reads TOGETHER_API_KEY
 
-    # Grounding first: manifest resource + a guided prompt from the server.
+    # Grounding first: a peek at real rows, the manifest resource, and a
+    # guided prompt from the server.
+    sample_rows = mcp.call_tool("search_graph", {"limit": 8})
     manifest = mcp.read_manifest_resource()
     guidance = mcp.get_prompt("explore_graph", {"focus": "the user's question"})
     tools = [to_openai_tool(t) for t in mcp.list_tools()]
 
     messages = [
-        {"role": "system", "content": make_system_prompt(manifest, guidance)},
+        {
+            "role": "system",
+            "content": make_system_prompt(manifest, sample_rows, guidance),
+        },
         {"role": "user", "content": question},
     ]
 
