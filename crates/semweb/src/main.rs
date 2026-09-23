@@ -155,6 +155,7 @@ fn router(state: Arc<AppState>) -> axum::Router {
         .route("/fragments", get(api::fragments))
         .route("/sparql", get(api::sparql))
         .route("/manifest", get(api::manifest))
+        .route("/ui", get(api::explorer))
         .route("/events", get(api::events))
         .route("/mcp", post(api::mcp))
         .route("/health", get(api::health))

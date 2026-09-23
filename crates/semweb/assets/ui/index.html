@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semantic Graph Explorer</title>
+<style>
+  :root { --bg:#0f1420; --card:#1a2233; --fg:#dbe3f4; --dim:#8494b8; --accent:#7aa2ff; --ok:#5ad19b; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f7f8fc; --card:#ffffff; --fg:#1c2434; --dim:#62708c; --accent:#3355c8; }
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; padding:24px; max-width:1100px; margin-inline:auto; }
+  h1 { font-size:19px; margin-bottom:4px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:6px; }
+  nav { display:flex; gap:6px; margin:18px 0 12px; flex-wrap:wrap; }
+  nav button { background:var(--card); color:var(--fg); border:1px solid var(--dim); border-radius:8px; padding:8px 14px; cursor:pointer; font-size:14px; }
+  nav button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  section { background:var(--card); border-radius:10px; padding:16px; margin-bottom:14px; }
+  h2 { font-size:14px; margin-bottom:10px; color:var(--accent); }
+  pre { white-space:pre-wrap; word-break:break-word; font:12.5px/1.5 ui-monospace, monospace; }
+  .row { display:flex; gap:8px; margin:8px 0; flex-wrap:wrap; }
+  input { background:var(--bg); color:var(--fg); border:1px solid var(--dim); border-radius:6px; padding:8px; font-size:13px; flex:1; min-width:240px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--dim); vertical-align:top; }
+  .dim { color:var(--dim); } code { font:12.5px ui-monospace, monospace; }
+  .evt { border-left:3px solid var(--accent); padding:4px 8px; margin:4px 0; font:12px ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>Semantic Graph Explorer</h1>
+<div class="sub">A thin client over the live API — this page builds itself from <code>/manifest</code>. No backend beyond the service, no build step.</div>
+<nav id="tabs"></nav>
+<div id="main"></div>
+
+<script>
+"use strict";
+const BASE = location.origin;
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+let manifest = null;
+
+async function jsonOf(path) { return (await fetch(path)).json(); }
+
+async function loadManifest() { manifest = await jsonOf(BASE + "/manifest"); }
+
+/* ---------- Manifest tab ---------- */
+function renderManifest() {
+  const classes = manifest.classes.map(c => `
+    <tr>
+      <td><code>${esc(c.compact)}</code><div class="dim">${esc(c.uri)}</div></td>
+      <td>${c.instances}</td>
+      <td>${esc(c.description || "—")}</td>
+      <td>${(c.shapes || []).map(s =>
+        `<div class="dim">${esc(s.path.split(/[#\/]/).pop())} · min ${s.minCount ?? "–"} · max ${s.maxCount ?? "–"}</div>`).join("")}</td>
+      <td><code class="dim">${esc(c.exampleQuery)}</code></td>
+    </tr>`).join("");
+  const predicates = manifest.predicates.map(p => `
+    <tr>
+      <td><code>${esc(p.compact)}</code><div class="dim">${esc(p.uri)}</div></td>
+      <td>${p.triples}</td>
+      <td>${esc(p.description || "")}</td>
+    </tr>`).join("");
+  const prefixes = Object.entries(manifest.prefixes || {})
+    .map(([p, u]) => `<code class="dim">${esc(p)}</code>`).join(" ");
+  setMain(`
+    <section><h2>Agent manifest</h2>
+      <div class="dim">fingerprint ${esc(manifest.schemaFingerprint)} — computed live on every request; no build step anywhere.</div>
+      <div class="row" style="margin-top:8px"><span class="dim">prefixes:</span> ${prefixes}</div>
+    </section>
+    <section><h2>Classes</h2>
+      <table><tr><th>class</th><th>instances</th><th>description</th><th>SHACL shapes</th><th>example query</th></tr>${classes}</table>
+    </section>
+    <section><h2>Predicates</h2>
+      <table><tr><th>predicate</th><th>triples</th><th>description</th></tr>${predicates}</table></section>`);
+}
+
+/* ---------- Search tab ---------- */
+function renderSearch() {
+  setMain(`
+    <section><h2>Triple Pattern Fragments — leave a position blank to make it a wildcard</h2>
+      <div class="row">
+        <input id="s" placeholder="subject URI">
+        <input id="p" placeholder="predicate URI, e.g. http://schema.org/worksFor">
+        <input id="o" placeholder="object (URI or literal)">
+        <input id="l" placeholder="limit" value="20" style="max-width:90px">
+        <button onclick="doSearch()">search</button>
+      </div>
+      <div class="dim">Tip: copy URIs from the Manifest tab — they are case-sensitive.</div>
+    </section>
+    <div id="results"></div>`);
+}
+async function doSearch() {
+  const q = new URLSearchParams();
+  const pairs = [["subject", "s"], ["predicate", "p"], ["object", "o"], ["limit", "l"]];
+  for (const [k, id] of pairs) {
+    const v = document.getElementById(id).value.trim();
+    if (v) q.set(k, v);
+  }
+  setResults(`<section class="dim">loading…</section>`);
+  const lines = (await (await fetch(BASE + "/fragments?" + q)).text())
+    .split("\n").filter(Boolean).map(l => JSON.parse(l));
+  const control = lines.find(l => l["@control"]) || {};
+  const data = lines.filter(l => !l["@control"]);
+  const rows = data.map(d => {
+    const id = d["@id"];
+    const rest = Object.keys(d).filter(k => k !== "@id")
+      .map(k => `<div><code>${esc(k)}</code> = ${esc(JSON.stringify(d[k]))}</div>`).join("");
+    return `<tr><td><code>${esc(id)}</code></td><td>${rest}</td></tr>`;
+  }).join("");
+  setResults(`
+    <section><h2>${data.length} triples · estimate ${control.count_estimate ?? "?"}
+      ${control.after ? `· more (after=${esc(control.after.slice(0, 20))}…)` : ""}</h2>
+      <table><tr><th>subject</th><th>predicate = object</th></tr>${rows}</table></section>`);
+}
+
+/* ---------- Topics tab ---------- */
+function renderTopics() {
+  const topics = manifest.topics || ["/topics/data", "/topics/schema"];
+  setMain(`
+    <section><h2>Topic content</h2>
+      <div class="dim">Topics are the WebSub resources — the hub delivers exactly this content on every change.</div>
+      <div class="row">${topics.map(t => `<button onclick="loadTopic('${esc(t)}')">${esc(t)}</button>`).join("")}</div>
+    </section>
+    <div id="topicout" class="dim">pick a topic above</div>`);
+}
+async function loadTopic(name) {
+  const r = await fetch(BASE + name);
+  const ct = r.headers.get("content-type") || "";
+  const text = await r.text();
+  const box = document.getElementById("topicout");
+  if (ct.includes("json") && !ct.includes("ndjson")) {
+    const pretty = JSON.stringify(JSON.parse(text), null, 2).slice(0, 5000);
+    box.innerHTML = `<section><h2>${esc(name)}</h2><pre>${esc(pretty)}</pre></section>`;
+  } else {
+    const rows = text.split("\n").filter(Boolean).slice(0, 100);
+    box.innerHTML = `<section><h2>${esc(name)} — first ${rows.length} lines</h2><pre>${esc(rows.join("\n"))}</pre></section>`;
+  }
+}
+
+/* ---------- Live (SSE) tab ---------- */
+let eventSource = null;
+function renderEvents() {
+  setMain(`
+    <section><h2>Live change feed (SSE)</h2>
+      <div class="dim">Events carry the notification header only — the client refetches topic content. Keepalives every ~15s keep the stream alive.</div>
+      <div class="row"><button onclick="watch()">connect</button></div>
+    </section>
+    <section id="evlist" class="dim">no events yet</section>`);
+}
+function watch() {
+  if (eventSource) eventSource.close();
+  const list = document.getElementById("evlist");
+  if (list.classList.contains("dim")) { list.textContent = ""; list.classList.remove("dim"); }
+  eventSource = new EventSource(BASE + "/events");
+  eventSource.onmessage = (m) => {
+    const div = document.createElement("div");
+    div.className = "evt";
+    div.textContent = m.data;
+    list.prepend(div);
+  };
+  eventSource.onerror = () => {
+    const div = document.createElement("div");
+    div.className = "evt";
+    div.textContent = "(connection closed — EventSource reconnects automatically)";
+    list.prepend(div);
+    eventSource.close(); eventSource = null;
+  };
+}
+
+/* ---------- Health tab ---------- */
+async function renderHealth() {
+  const h = await jsonOf(BASE + "/health");
+  const metrics = await (await fetch(BASE + "/metrics")).text();
+  setMain(`
+    <section><h2>Health</h2><pre>${esc(JSON.stringify(h, null, 2))}</pre></section>
+    <section><h2>Metrics (Prometheus)</h2><pre>${esc(metrics.slice(0, 3000))}</pre></section>`);
+}
+
+/* ---------- shell ---------- */
+function setMain(html) { document.getElementById("main").innerHTML = html; }
+
+const tabs = {
+  manifest: { label: "Manifest", render: renderManifest },
+  search:   { label: "Search",   render: renderSearch },
+  topics:   { label: "Topics",   render: renderTopics },
+  events:   { label: "Live",     render: renderEvents },
+  health:   { label: "Health",   render: renderHealth },
+};
+
+function show(key) {
+  document.getElementById("tabs").innerHTML = Object.entries(tabs)
+    .map(([k, t]) => `<button class="${k === key ? "active" : ""}" onclick="show('${k}')">${t.label}</button>`)
+    .join("");
+  tabs[key].render();
+}
+
+(async () => {
+  await loadManifest();
+  show("manifest");
+})();
+</script>
+</body>
+</html>

@@ -73,6 +73,7 @@ Oxigraph serves the SPARQL 1.1 Protocol at <http://localhost:7878>
 <http://localhost:8484>.
 
 ```sh
+open http://localhost:8484/ui                                                 # graph explorer (browser)
 curl http://localhost:8484/manifest                                           # agent manifest
 curl http://localhost:8484/                                                   # live self-description
 curl "http://localhost:8484/fragments?predicate=http://schema.org/worksFor"   # streamed fragment

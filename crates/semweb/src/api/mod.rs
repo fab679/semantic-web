@@ -22,6 +22,7 @@ mod manifest;
 mod mcp;
 mod self_description;
 mod sparql;
+mod ui;
 mod write;
 
 pub use events::events;
@@ -33,6 +34,7 @@ pub(crate) use manifest::manifest_document;
 pub use mcp::mcp;
 pub use self_description::{context_jsonld, root};
 pub use sparql::sparql;
+pub use ui::explorer;
 pub use write::admin_insert;
 
 use axum::extract::State;

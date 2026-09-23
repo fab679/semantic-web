@@ -17,6 +17,12 @@ Two containers come up:
 
 ## First look (30 seconds)
 
+Open the **Graph Explorer** at <http://localhost:8484/ui> — a single
+embedded page that builds itself from the live manifest: browse classes
+and descriptions, search patterns, preview topics, watch the live
+change feed, and see health/metrics. It is a pure client over the API
+(everything it shows is plain HTTP you can call yourself).
+
 ```sh
 # What does the graph contain? (live, always current)
 curl http://localhost:8484/

@@ -77,6 +77,12 @@ covered in depth on its guide page; this page is the full map.
 
 See [For agents](for-agents.md) and the [agent tutorial](agent-tutorial.md).
 
+## User interface
+
+| Feature | What it does | Where |
+|---|---|---|
+| Graph Explorer | a single embedded page that builds itself from `/manifest`: browse classes/descriptions/SHACL shapes, search fragments, preview topics, watch the live SSE feed, health + metrics. No build tooling, no extra backend — one HTML file in the binary | `GET /ui` |
+
 ## Operations
 
 | Feature | What it does | Where |

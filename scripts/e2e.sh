@@ -109,6 +109,9 @@ curl -sf -X POST "$BASE/admin/insert" -H "Authorization: Bearer demo-write-token
 sleep 2
 grep -q 'data: {"topic":"/topics/data"' /tmp/semweb-e2e-sse.log; check "sse event delivered" $?
 
+say "graph explorer"
+curl -sf "$BASE/ui" | grep -q "Semantic Graph Explorer"; check "ui served" $?
+
 say "metrics"
 curl -sf "$BASE/metrics" | grep -q semweb_deliveries_total; check "metrics exposed" $?
 

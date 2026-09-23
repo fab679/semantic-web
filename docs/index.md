@@ -108,6 +108,7 @@ their understanding safely instead of guessing.
 ```sh
 docker compose up --build -d          # store + service
 
+open http://localhost:8484/ui          # explore the graph in a browser
 curl http://localhost:8484/            # what exists? (live)
 curl "http://localhost:8484/fragments?predicate=http://schema.org/worksFor"
 curl http://localhost:8484/manifest    # the agent manifest
