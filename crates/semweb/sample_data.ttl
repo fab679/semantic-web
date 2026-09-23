@@ -1,0 +1,52 @@
+# sample_data.ttl
+# Seed dataset for the prototype, deliberately tiny: enough to exercise
+# every piece of the architecture (two classes, several predicates, a
+# multi-hop knowable chain, a typed literal, and one unclosed edge) without
+# burying the /fragments output under noise.
+#
+# The vocabularies used here map to the friendly names in context.py:
+#   foaf:name      -> "name"
+#   foaf:knows     -> "knows"
+#   foaf:Person    -> "Person"
+#   schema:worksFor -> "employer"
+#   schema:employee -> "employs"
+#   schema:foundingDate -> "founded"
+
+@prefix foaf:   <http://xmlns.com/foaf/0.1/> .
+@prefix schema: <http://schema.org/> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .
+@prefix ex:     <http://example.org/> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+
+# Human descriptions -- what the agent manifest pulls live from
+# rdfs:comment / skos:definition so agents plan against what terms MEAN.
+foaf:Person rdfs:comment "A human being, alive, dead, undead, or fictional." ;
+    skos:definition "A person as described by the FOAF vocabulary." .
+foaf:Organization rdfs:comment "An organization the people here work for." ;
+    skos:definition "A collective entity with members and employees." .
+schema:worksFor rdfs:comment "The organization a person is employed by." .
+foaf:knows rdfs:comment "A social link between two people; chains of knows enable multi-hop queries." .
+
+ex:alice a foaf:Person ;
+    foaf:name "Alice" ;
+    foaf:knows ex:bob ;
+    schema:worksFor ex:acme .
+
+ex:bob a foaf:Person ;
+    foaf:name "Bob" ;
+    foaf:knows ex:carol ;
+    schema:worksFor ex:acme .
+
+ex:carol a foaf:Person ;
+    foaf:name "Carol" ;
+    schema:worksFor ex:globex .
+
+ex:acme a foaf:Organization ;
+    foaf:name "Acme Corp" ;
+    schema:foundingDate "2001-04-03"^^xsd:date ;
+    schema:employee ex:alice , ex:bob .
+
+ex:globex a foaf:Organization ;
+    foaf:name "Globex" ;
+    schema:employee ex:carol .

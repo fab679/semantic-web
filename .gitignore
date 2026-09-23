@@ -1,0 +1,5 @@
+# Rust build
+/target
+
+# Environment / local files
+.env

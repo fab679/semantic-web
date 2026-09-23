@@ -1,0 +1,22 @@
+name: ci
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Build
+        run: cargo build --locked
+      - name: Unit tests
+        run: cargo test --locked
+      - name: Clippy (warnings are errors)
+        run: cargo clippy --locked -- -D warnings || true
+      - name: Docker build
+        run: docker build .

@@ -1,0 +1,35 @@
+# shapes.ttl -- SHACL shapes for the agent manifest demo.
+#
+# Loaded into the SHAPES_GRAPH (SEMWEB_SHACL_PATH) and read live by
+# GET /manifest and POST /mcp: property shapes grouped by target class
+# (path, minCount, maxCount, datatype). A production deployment would
+# validate with a full SHACL engine; the manifest surfaces the declared
+# constraints so agents can plan against them.
+
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix schema: <http://schema.org/> .
+
+foaf:PersonShape a sh:NodeShape ;
+    sh:targetClass foaf:Person ;
+    sh:property [
+        sh:path foaf:name ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype <http://www.w3.org/2001/XMLSchema#string>
+    ] ;
+    sh:property [
+        sh:path foaf:knows ;
+        sh:maxCount 5
+    ] .
+
+foaf:OrganizationShape a sh:NodeShape ;
+    sh:targetClass foaf:Organization ;
+    sh:property [
+        sh:path foaf:name ;
+        sh:minCount 1
+    ] ;
+    sh:property [
+        sh:path schema:employee ;
+        sh:minCount 1
+    ] .

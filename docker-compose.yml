@@ -1,0 +1,93 @@
+# docker-compose.yml
+# -------------------
+# Production topology of the service in two containers:
+#
+#   oxigraph      -> the triple store, running standalone. Exposes the
+#                    standard SPARQL 1.1 Protocol at /query and /update and
+#                    the Graph Store Protocol at /store (used to load
+#                    sample_data.ttl). Data persists in the named volume.
+#
+#   semantic-web  -> the service: TPF fragments streamed as NDJSON-LD,
+#                    live self-description, spec-compliant WebSub hub
+#                    (docs/WebSub.md). Talks to Oxigraph over the SPARQL
+#                    1.1 Protocol, so the store and the service are
+#                    separately restartable and the store is swappable
+#                    for any conforming SPARQL endpoint.
+#
+# Start the stack:          docker compose up --build
+# Watch the WebSub loop:    docker compose --profile demo up
+#                           (subscribe demo-subscriber's callback:
+#                            http://demo-subscriber:9000/callback,
+#                            then watch `docker compose logs -f demo-subscriber`)
+#
+# The Oxigraph web UI is available at http://localhost:7878
+
+services:
+  oxigraph:
+    image: ghcr.io/oxigraph/oxigraph:0.5.10
+    # 0.5.x CLI is subcommand-based; bind must be 0.0.0.0 or the port
+    # mapping never reaches the server (default is loopback-only).
+    command: ["serve", "--location", "/data", "--bind", "0.0.0.0:7878"]
+    ports:
+      - "7878:7878"
+    volumes:
+      - oxigraph-data:/data
+    # NOTE: no healthcheck -- the Oxigraph image is distroless (no
+    # shell/wget/curl to run one with). The service tolerates this:
+    # load_seed retries while the store boots.
+
+  semantic-web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      SEMWEB_SPARQL_ENDPOINT: http://oxigraph:7878/query
+      SEMWEB_SPARQL_UPDATE: http://oxigraph:7878/update
+      SEMWEB_PUBLIC_URL: http://localhost:8000
+      SEMWEB_SEED_PATH: /app/sample_data.ttl
+      # SHACL shapes -> SHAPES_GRAPH, surfaced by GET /manifest and /mcp.
+      SEMWEB_SHACL_PATH: /app/shapes.ttl
+      # Mutating endpoints (POST /admin/insert) require this bearer token.
+      # Read endpoints stay open.
+      SEMWEB_WRITE_TOKEN: demo-write-token
+      SEMWEB_QUEUE_CAPACITY: "4096"
+      SEMWEB_DELIVERY_WORKERS: "8"
+      # Subscription-secret encryption at rest (recommended). 32 random
+      # bytes, hex. `openssl rand -hex 32`.
+      SEMWEB_SECRET_KEY: 5f4d3c2b1a0987654321fedcba9876543210fedcba9876543210abcdef123456
+      # Replica sharding defaults (1 replica). Set COUNT>1 + distinct
+      # INDEX on scaled-out replicas sharing one store.
+      SEMWEB_REPLICA_COUNT: "1"
+      SEMWEB_REPLICA_INDEX: "0"
+      RUST_LOG: info
+    depends_on:
+      - oxigraph
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:8000/"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Optional: run a WebSub subscriber inside the docker network so the
+  # full publish/subscribe loop can be exercised end to end with no host
+  # networking involved:
+  #   docker compose --profile demo up -d
+  #   curl -X POST http://localhost:8000/hub \
+  #     -d "hub.mode=subscribe" \
+  #     -d "hub.topic=http://localhost:8000/topics/data" \
+  #     -d "hub.callback=http://demo-subscriber:9000/callback" \
+  #     -d "hub.secret=demo"
+  #   docker compose logs -f demo-subscriber
+  demo-subscriber:
+    build: .
+    command: ["/app/demo-subscriber"]
+    environment:
+      DEMO_SUBSCRIBER_PORT: "9000"
+      SUBSCRIBER_SECRET: demo
+      RUST_LOG: info
+    profiles: ["demo"]
+    depends_on:
+      - semantic-web
+
+volumes:
+  oxigraph-data:

@@ -1,0 +1,22 @@
+[package]
+name = "semweb"
+version = "0.1.0"
+edition = "2021"
+description = "Streaming Semantic Fragments: Triple Pattern Fragments over Oxigraph with a spec-compliant WebSub hub"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+hmac = "0.12"
+sha2 = "0.10"
+aes-gcm = "0.10"
+rand = "0.9"
+urlencoding = "2"
+base64 = "0.22"
+futures = "0.3"
+bytes = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
