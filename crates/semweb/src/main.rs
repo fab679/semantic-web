@@ -45,6 +45,13 @@ async fn main() {
         state.hub.config().replica_count,
         port
     );
+    tracing::info!(
+        "hub config: queue_capacity={}, workers={}, open_hub={}, external_hubs={}",
+        state.hub.config().queue_capacity,
+        state.hub.config().workers,
+        state.hub.config().open_hub,
+        state.hub.config().external_hubs.len()
+    );
 
     // Background task 1: seed + optional SHACL shapes (idempotent;
     // load_seed retries while Oxigraph boots), then warm the cardinality

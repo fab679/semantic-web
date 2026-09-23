@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use std::sync::atomic::Ordering;
 
 use crate::hub::verification;
-use crate::hub::{Delivery, Hub, Subscription};
+use crate::hub::{resolve_topic, Delivery, Hub, Subscription};
 
 
 impl Hub {
@@ -110,15 +110,17 @@ impl Hub {
                         tracing::warn!(event = event_id, callback, "claim failed: {e}");
                         continue;
                     }
-                    // Third-party topics (open hub) keep their URL as-is;
-                    // canonical topics resolve below via resolve_topic.
-                    // (handled inline below)
+                    // Resolve canonical topics ("/topics/data"); third-party
+                    // topics (open hub) keep their URL as-is -- that URL is
+                    // fetched at delivery time (§7).
+                    let topic_static = resolve_topic(&topic).map(|t| t.to_string())
+                        .unwrap_or_else(|| topic.clone());
 
                     // Only the owning replica redelivers.
                     if !self.owns(&topic, &callback) {
                         continue;
                     }
-                    let content = match self.build_topic_content_or_fetch(&topic).await {
+                    let content = match self.build_topic_content_or_fetch(&topic_static).await {
                         Ok(c) => c,
                         Err(e) => {
                             tracing::error!(event = event_id, "redelivery content build failed: {e:?}");

@@ -45,6 +45,8 @@ async fn main() {
         .expect("bind port");
     let app = axum::Router::new()
         .route("/callback", axum::routing::get(verify).post(deliver))
+        .route("/cb/{id}", axum::routing::get(verify).post(deliver_numbered))
+        .route("/stats", axum::routing::get(stats))
         .with_state(secret);
     axum::serve(listener, app).await.expect("server error");
 }
@@ -140,4 +142,48 @@ fn signature(secret: &[u8], body: &[u8]) -> Option<String> {
 fn kv_decode(s: &str) -> String {
     // hub.challenge and hub.topic arrive percent-encoded in the query.
     urlencoding::decode(s).map(|c| c.into_owned()).unwrap_or_else(|_| s.to_string())
+}
+
+/// Bench mode: record (id -> arrival, epoch ms) so the harness can
+/// measure per-subscriber delivery latency against its own insert time.
+/// The id is any string (the callback path suffix).
+async fn deliver_numbered(
+    axum::extract::State(secret): axum::extract::State<Option<String>>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    req: AxumRequest,
+) -> axum::response::Response {
+    let (parts, body) = req.into_parts();
+    let raw = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
+
+    if let Some(secret) = &secret {
+        let valid = parts
+            .headers
+            .get("X-Hub-Signature")
+            .and_then(|v| v.to_str().ok())
+            .map(|provided| match signature(secret.as_bytes(), &raw) {
+                Some(expected) => provided == format!("sha256={expected}"),
+                None => false,
+            })
+            .unwrap_or(false);
+        if !valid {
+            return axum::http::StatusCode::ACCEPTED.into_response();
+        }
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    deliveries().lock().await.insert(id, now);
+    axum::http::StatusCode::OK.into_response()
+}
+
+async fn stats() -> axum::Json<serde_json::Value> {
+    let deliveries = deliveries().lock().await.clone();
+    axum::Json(serde_json::json!({ "deliveries": deliveries }))
+}
+
+fn deliveries() -> &'static tokio::sync::Mutex<std::collections::HashMap<String, u64>> {
+    static DELIVERIES: std::sync::OnceLock<tokio::sync::Mutex<std::collections::HashMap<String, u64>>> =
+        std::sync::OnceLock::new();
+    DELIVERIES.get_or_init(|| tokio::sync::Mutex::new(std::collections::HashMap::new()))
 }

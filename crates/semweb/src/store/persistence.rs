@@ -241,7 +241,7 @@ impl SparqlStore {
     > {
         let rows = self
             .query_bindings(&format!(
-                "SELECT ?id ?event ?topic ?callback ?secret ?selfUrl ?hubUrl WHERE {{ \
+                "SELECT ?id ?event ?topic ?callback ?secret ?selfUrl ?hubUrl ?at ?claimed WHERE {{ \
                  GRAPH <{HUB_DELIVERIES_GRAPH}> {{ \
                  ?d <{NS}event> ?event ; \
                  <{NS}topic> ?topic ; \
@@ -251,6 +251,7 @@ impl SparqlStore {
                  <{NS}enqueuedAt> ?at . \
                  BIND(STRAFTER(STR(?d), \"{DELIVERY_SUBJ_PREFIX}\") AS ?id) \
                  OPTIONAL {{ ?d <{NS}secret> ?secret }} \
+                 OPTIONAL {{ ?d <{NS}claimedUntil> ?claimed }} \
                  }}}}"
             ))
             .await?;

@@ -38,10 +38,30 @@ pub const RETRY_DELAYS: [Duration; 3] = [
 /// The worker loop: exactly one worker takes each queued delivery
 /// (workers share the receiver under a mutex, see Hub::new).
 pub(crate) async fn worker_loop(hub: Arc<Hub>, rx: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Delivery>>>, worker: usize) {
+    tracing::debug!(worker, "delivery worker started");
     loop {
         let delivery = { rx.lock().await.recv().await };
         match delivery {
-            Some(d) => deliver_one(hub.clone(), d, worker).await,
+            Some(d) => {
+                tracing::debug!(worker, event = d.event_id, "worker took delivery from queue");
+                // Panic containment: a delivery that panics must not kill
+                // the worker (a dead worker silently stalls the whole pool).
+                let hub2 = hub.clone();
+                let outcome = tokio::spawn(async move {
+                    // move the delivery into a fresh task so a panic is
+                    // contained; AssertUnwindSafe because Delivery is not
+                    // UnwindSafe by default (contains Arc<Hub> with locks).
+                    futures::FutureExt::catch_unwind(std::panic::AssertUnwindSafe(
+                        deliver_one(hub2, d, worker),
+                    ))
+                    .await
+                })
+                .await;
+                if outcome.is_err() {
+                    tracing::error!(worker, "delivery task panicked; worker survives (spec §7)");
+                    hub.metrics.delivery_retries.fetch_add(1, Ordering::Relaxed);
+                }
+            }
             None => return, // channel closed
         }
     }
@@ -68,13 +88,13 @@ pub(crate) async fn deliver_one(hub: Arc<Hub>, delivery: Delivery, worker: usize
         tracing::info!(event = event_id, callback, "redelivering from durable log after restart");
     }
 
-    // attempt 0 = first send; attempts 1.. = after each retry delay
-    for (attempt, delay) in std::iter::once(Duration::ZERO)
-        .chain(RETRY_DELAYS)
-        .enumerate()
-    {
+    // attempt 0 = first send; attempts 1.. = after each retry delay.
+    // Written as an explicit counter (not enumerate-over-chained-delays)
+    // so the retry index can never underflow.
+    let mut attempt: usize = 0;
+    loop {
         if attempt > 0 {
-            tokio::time::sleep(delay).await;
+            tokio::time::sleep(RETRY_DELAYS[attempt - 1]).await;
         }
         let mut req = hub
             .http
@@ -112,13 +132,14 @@ pub(crate) async fn deliver_one(hub: Arc<Hub>, delivery: Delivery, worker: usize
                     Ok(r) => format!("{}", r.status()),
                     Err(e) => format!("error: {e}"),
                 };
-                if attempt <= RETRY_DELAYS.len() {
+                if attempt < RETRY_DELAYS.len() {
                     hub.metrics.delivery_retries.fetch_add(1, Ordering::Relaxed);
                     tracing::warn!(
                         event = event_id, worker, callback,
                         "delivery failed ({status}); retrying in {:?}",
-                        RETRY_DELAYS[attempt - 1]
+                        RETRY_DELAYS[attempt]
                     );
+                    attempt += 1;
                 } else {
                     // §7: keep the subscription active until lease end even
                     // after exhausting retries for this notification; only
@@ -134,6 +155,7 @@ pub(crate) async fn deliver_one(hub: Arc<Hub>, delivery: Delivery, worker: usize
                          until lease expiry (spec §7)",
                         attempt + 1
                     );
+                    return;
                 }
             }
         }

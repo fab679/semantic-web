@@ -8,6 +8,34 @@ Prometheus metrics — on a store contract that is the SPARQL 1.1
 Protocol itself. This document states what is implemented and carries
 the concrete designs for what comes next, in order of leverage.
 
+## 0. Measured numbers
+
+Reproduce: `uv run --project bench bench.py load --triples 100000`,
+then `read`, `fanout --fanout 50`, `crash` (harness in `bench/`,
+subscriber instrument in `demo-subscriber`; runs against the compose
+stack on one machine).
+
+| Measurement | Result (single container, 100k triples) |
+|---|---|
+| Bulk load | 100k triples in 3.2–3.9s (~26k–32k triples/s via Graph Store) |
+| Fragments paged full scan (100) | p50 5.0 ms · p95 6.8 ms |
+| Fragments predicate-bound | p50 4.0 ms · p95 5.4 ms |
+| Fragments subject-bound | p50 4.1 ms · p95 6.0 ms |
+| Live self-description (`GET /`) | p50 4.6 ms · p95 6.0 ms |
+| Agent manifest (`GET /manifest`, GROUP BYs) | p50 7.7 ms · p95 9.7 ms |
+| SPARQL COUNT over 100k | p50 4.4 ms · p95 5.1 ms |
+| WebSub fan-out, 50 subscribers, one insert | 50/50 delivered · p50 31 ms · p95 45 ms |
+| Crash redelivery (planted pending entry) | **1.1 s** (restart + log scan + signed delivery) |
+
+Notes: latency measured from the host against the containerized stack
+(loopback HTTP); fan-out on small content — full-content delivery scales
+with topic size, so measure topics at their real size. The crash test
+exercises the durable-log path end to end: stop → plant → restart →
+signed delivery. It also caught a real production bug during
+development: a usize underflow in the retry loop killed delivery workers
+silently on their first failure (now fixed + panic-contained per
+delivery).
+
 ## 1. What is implemented
 
 | Concern | Implementation |
@@ -31,6 +59,7 @@ the concrete designs for what comes next, in order of leverage.
 | Abuse control | Per-callback token bucket on subscription requests (429 + metric); §8.2 challenge restrictions; `hub.secret` length enforcement |
 | Auth | `SEMWEB_WRITE_TOKEN` bearer auth on mutating endpoints; read endpoints open |
 | Observability | `/metrics` (Prometheus text), `/health` (liveness + store readiness), per-mutation `event_id` threading write → publish → fan-out |
+| Load harness | `bench/`: bulk load, fragment latency percentiles, fan-out latency, crash redelivery — numbers in §0 |
 | Store contract | SPARQL 1.1 Protocol + Graph Store Protocol — any conforming endpoint is a drop-in; query and update URLs are separately configurable (read replicas = config) |
 
 ## 2. Write path at scale
