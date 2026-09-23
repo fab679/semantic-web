@@ -1,7 +1,7 @@
 site_name: Streaming Semantic Fragments
 site_description: A live, agent-readable surface over RDF — Triple Pattern Fragments, live self-description, and WebSub push. Plain HTTP only.
-site_url: https://fabisch.github.io/semantic-web
-repo_url: https://github.com/fabisch/semantic-web
+site_url: https://fab679.github.io/semantic-web
+repo_url: https://github.com/fab679/semantic-web
 repo_name: fabisch/semantic-web
 
 theme:
