@@ -1,5 +1,2 @@
-# Rust build
-/target
-
-# Environment / local files
-.envsite/
+.env
+site/
