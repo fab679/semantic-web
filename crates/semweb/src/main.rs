@@ -211,5 +211,33 @@ fn router(state: Arc<AppState>) -> axum::Router {
         .route("/hub", post(api::hub_post).get(api::hub_get))
         .route("/topics/{name}", get(api::topic))
         .route("/admin/insert", post(api::admin_insert))
+        .layer(cors_layer())
         .with_state(state)
+}
+
+/// CORS for apps that live on other origins (the demo microblog,
+/// dashboards, third-party frontends). `SEMWEB_CORS_ORIGINS` is a
+/// comma-separated allowlist; unset/empty = allow any origin (demo/dev
+/// posture — tighten it for a public deployment).
+fn cors_layer() -> tower_http::cors::CorsLayer {
+    use axum::http::HeaderValue;
+    use tower_http::cors::{Any, CorsLayer};
+
+    let origins = std::env::var("SEMWEB_CORS_ORIGINS").unwrap_or_default();
+    let list: Vec<String> = origins
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    let layer = CorsLayer::new().allow_methods(Any).allow_headers(Any);
+    if list.is_empty() {
+        layer.allow_origin(Any)
+    } else {
+        let origins = list
+            .iter()
+            .map(|s| HeaderValue::from_str(s).expect("valid CORS origin"))
+            .collect::<Vec<_>>();
+        layer.allow_origin(origins)
+    }
 }

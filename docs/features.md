@@ -87,6 +87,8 @@ See [For agents](for-agents.md) and the [agent tutorial](agent-tutorial.md).
 | Feature | What it does | Where |
 |---|---|---|
 | Graph Explorer | a single embedded page that builds itself from `/manifest`: browse classes/descriptions/SHACL shapes, search fragments, preview topics, watch the live SSE feed, health + metrics. No build tooling, no extra backend — one HTML file in the binary | `GET /ui` |
+| CORS | browser apps on other origins work out of the box (`SEMWEB_CORS_ORIGINS` allowlist, any-origin by default) | config |
+| Demo app: Semblr | a real microblog with agent panel — feed/likes/follows/suggestions over SPARQL, SSE live updates, ship-a-feature schema moment, MCP agent as a first-class node | `examples/microblog/` |
 
 ## Operations
 

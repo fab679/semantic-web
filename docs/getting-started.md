@@ -157,6 +157,7 @@ cargo run -p semweb        # listens on :8484 by default
 ## Where to next
 
 - Understand the building blocks: [Concepts](concepts.md)
+- **See a real app on top: [Semblr, the demo microblog](microblog-demo.md)**
 - Read the graph from an app: [For developers](for-developers.md)
 - Every endpoint in detail: [API reference](api.md)
 - Build an agent on top: [For agents](for-agents.md)

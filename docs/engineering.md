@@ -100,7 +100,7 @@ between service and store (rides a mesh/sidecar).
 docker compose up --build -d                       # single replica
 docker compose --profile demo up -d                # + demo subscriber
 SEMWEB_REPLICA_COUNT=2 docker compose --profile scale up -d   # 2-shard cluster
-./scripts/e2e.sh                                   # full battery (18 checks), exit code = verdict
+./scripts/e2e.sh                                   # full battery (19 checks), exit code = verdict
 cargo test                                         # 24 unit tests
 uv run --project bench bench.py read               # latency harness (bench/)
 ```

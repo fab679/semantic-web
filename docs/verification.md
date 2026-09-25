@@ -71,12 +71,14 @@ no cache invalidation — sequential curls.
 | Claim | Evidence |
 |---|---|
 | Graph Explorer | `GET /ui` → 200, self-building page over the same endpoints (17th e2e check) |
+| CORS | `Origin: http://localhost:8080` on `/manifest` → `access-control-allow-origin` present (18th e2e check) |
+| Demo app flows | `examples/microblog/` seed/feed/likes/suggestions/ship-a-feature/agent-node verified by its smoke script |
 | SSE | `data: {"topic":"/topics/data","event_id":"…"}` observed within ~1s of the insert |
 | Metrics | Prometheus text with hub lifecycle counters (deliveries, verifications, 410s, rate-limits, shard routing) |
 
 ## How to re-verify
 
-- One command: `./scripts/e2e.sh` (18 checks, exit code = verdict, runs in CI)
+- One command: `./scripts/e2e.sh` (19 checks, exit code = verdict, runs in CI)
 - Unit tests: `cargo test` (26)
 - The commands above are plain curl against a running stack.
 

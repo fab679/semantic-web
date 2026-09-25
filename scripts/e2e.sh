@@ -117,6 +117,10 @@ grep -q 'data: {"topic":"/topics/data"' /tmp/semweb-e2e-sse.log; check "sse even
 say "graph explorer"
 curl -sf "$BASE/ui" | grep -q "Semantic Graph Explorer"; check "ui served" $?
 
+say "cors (apps on other origins)"
+curl -s -D- -o /dev/null -H "Origin: http://localhost:8080" "$BASE/manifest" \
+  | grep -qi "access-control-allow-origin"; check "cors header" $?
+
 say "metrics"
 curl -sf "$BASE/metrics" | grep -q semweb_deliveries_total; check "metrics exposed" $?
 

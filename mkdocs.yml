@@ -31,6 +31,7 @@ nav:
       - Why this exists: index.md
       - Concepts in plain language: concepts.md
       - Quickstart: getting-started.md
+      - Demo app (Semblr microblog): microblog-demo.md
   - For developers:
       - Reading the graph: for-developers.md
       - Federation (decentralized WebSub): federation.md

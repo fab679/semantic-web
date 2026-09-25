@@ -22,6 +22,7 @@ sibling `/store` of the update URL.
 |---|---|---|
 | `SEMWEB_PORT` | `8484` (`cargo run`); `8000` inside the docker container | listen port. Ports are dedicated so the project never conflicts with anything else: service **8484**, Oxigraph **7878**, scale replica 2 **8485** (docker maps host 8484/8485 → container 8000) |
 | `SEMWEB_PUBLIC_URL` | `http://localhost:$PORT` | absolute base used for WebSub discovery (`rel=self` / `rel=hub`) Link headers |
+| `SEMWEB_CORS_ORIGINS` | empty (allow any origin) | comma-separated origin allowlist for browser apps on other origins (the demo microblog, dashboards). Set it in production, e.g. `https://app.example.com` |
 | `RUST_LOG` | `info` | tracing filter (`debug` for delivery/verification detail) |
 
 ## WebSub hub

@@ -60,6 +60,7 @@ crates/semweb/             the service
   sample_data.ttl          demo seed
   shapes.ttl               demo SHACL shapes (agent manifest)
 examples/agent/            runnable tutorial agent (Together AI + MCP)
+examples/microblog/        demo app: a social feed on the graph (UI + agent panel)
 bench/                     latency harness (load / read / fanout / crash)
 scripts/e2e.sh             end-to-end battery (17 checks, CI-gated)
 Dockerfile                 multi-stage build (service + demo subscriber)
