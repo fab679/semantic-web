@@ -177,9 +177,14 @@ impl PrefixMap {
     /// URIs in the data, which the context need not (and cannot honestly)
     /// name. Alias names that collide with a prefix name are skipped
     /// (prefixes win -- JSON-LD keywords aside, one key one meaning).
+    ///
+    /// `xsd` is always included: typed literals in the data render as
+    /// `"@type": "xsd:date"` etc., so the context must name the XSD
+    /// namespace for a JSON-LD processor to round-trip datatypes.
     pub fn context_document(&self, namespaces: &[String]) -> serde_json::Value {
         let mut map = serde_json::Map::new();
         map.insert("type".into(), serde_json::Value::String("@type".into()));
+        map.insert("xsd".into(), serde_json::Value::String(XSD_NS.to_string()));
         for ns in namespaces {
             if let Some(prefix) = self.prefix_for(ns) {
                 map.insert(prefix, serde_json::Value::String(ns.clone()));
@@ -261,10 +266,16 @@ mod tests {
         let ctx = &doc["@context"];
         // prefix entry still there
         assert_eq!(ctx["foaf"], serde_json::json!("http://xmlns.com/foaf/0.1/"));
+        // xsd is always present (datatypes use it in the data)
+        assert_eq!(ctx["xsd"], serde_json::json!(XSD_NS));
         // alias as a JSON-LD term definition (round-trippable)
         assert_eq!(
             ctx["name"],
             serde_json::json!({"@id": "http://xmlns.com/foaf/0.1/name"})
         );
+        // an alias never shadows a registered prefix name
+        let m2 = map_with(&[("xsd", "http://evil.example/ns#")]);
+        let doc2 = m2.context_document(&[]);
+        assert_eq!(doc2["@context"]["xsd"], serde_json::json!(XSD_NS));
     }
 }

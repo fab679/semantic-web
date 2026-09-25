@@ -106,7 +106,7 @@ impl Hub {
                     if claimed_until > now || now.saturating_sub(enqueued_at) < 60 {
                         continue;
                     }
-                    if let Err(e) = self.store.claim_delivery(&id, now + 90).await {
+                    if let Err(e) = self.store.claim_delivery(&id, now + super::CLAIM_SECS).await {
                         tracing::warn!(event = event_id, callback, "claim failed: {e}");
                         continue;
                     }

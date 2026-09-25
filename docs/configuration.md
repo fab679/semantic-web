@@ -32,7 +32,7 @@ sibling `/store` of the update URL.
 | `SEMWEB_DELIVERY_WORKERS` | `8` | concurrent delivery workers |
 | `SEMWEB_SECRET_KEY` | unset (plaintext at rest) | 64-hex-char (32-byte) AES-256-GCM key; encrypts subscriber secrets in the store. Generate: `openssl rand -hex 32`. Shorter values are ignored with a warning |
 | `SEMWEB_REQUIRE_HTTPS_CALLBACKS` | `false` | reject `http://` callbacks that register a `hub.secret` (spec §8.2 recommends HTTPS). Accepts `1`/`true` |
-| `SEMWEB_CALLBACK_ALLOWLIST` | empty (allow all) | comma-separated callback host suffixes, e.g. `mysvc.example.com,api.example.org` |
+| `SEMWEB_CALLBACK_ALLOWLIST` | empty (allow all) | comma-separated host suffixes, e.g. `mysvc.example.com,api.example.org`. Gates subscriber callbacks AND — when `SEMWEB_OPEN_HUB` is on — third-party topic URLs (both are fetch/POST targets, so one allowlist covers both SSRF surfaces) |
 | `SEMWEB_OPEN_HUB` | `false` | accept third-party topics (any publisher's URL) — the hub serves external publishers (§5.1 policy); content fetched at publish time, capped at 16 MiB |
 | `SEMWEB_HUB_URLS` | empty (only ours) | comma-separated external hubs advertised in Link headers and notified on every mutation (§4 fault tolerance / §6) |
 

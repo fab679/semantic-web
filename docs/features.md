@@ -49,6 +49,10 @@ covered in depth on its guide page; this page is the full map.
 | Write-path auth | bearer token on mutating endpoints | `SEMWEB_WRITE_TOKEN` |
 | Hub auth (optional) | gate who may subscribe/unsubscribe/publish | `SEMWEB_HUB_TOKEN` |
 | Secret encryption at rest | AES-256-GCM on stored subscriber secrets; legacy plaintext values keep working; tampering rejected | `SEMWEB_SECRET_KEY` |
+| Hub-state integrity | service-reserved named graphs rejected on writes, hidden from `?graph=` reads | built in |
+| Constant-time token compare | bearer-token validation uses `subtle::ConstantTimeEq` | built in |
+| Duplicate write suppression | re-inserting an existing triple is a no-op (no counter drift, no push) | built in |
+| Verification retries + denied | unreachable callbacks retried 3x, then an explicit §5.2 denied notification | built in |
 | HMAC-signed pushes | verify deliveries with your `hub.secret` (sha256) | per subscription |
 | Rate limiting | per-callback token bucket on subscription requests (429) | built in |
 | HTTPS-callback policy | reject `http://` callbacks that register secrets | `SEMWEB_REQUIRE_HTTPS_CALLBACKS` |

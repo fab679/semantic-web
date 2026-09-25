@@ -46,8 +46,18 @@ pub async fn hub_post(
             let scheduled = match resolve_topic(url) {
                 Some(topic) => state.hub.clone().publish(topic, &event_id).await,
                 None => {
+                    // §5.1 policy: third-party topics (open hub) must
+                    // respect the host allowlist — the publish-time fetch
+                    // is an SSRF surface identical to callback delivery.
                     if topic_allowed(url, state.hub.config().open_hub).is_some() {
-                        state.hub.clone().publish_external(url, &event_id).await
+                        if crate::hub::allowlist_ok(&state.hub.config().callback_allowlist, url) {
+                            state.hub.clone().publish_external(url, &event_id).await
+                        } else {
+                            return Err((
+                                StatusCode::BAD_REQUEST,
+                                "hub.url host is not in the configured allowlist".to_string(),
+                            ));
+                        }
                     } else {
                         return Err((
                             StatusCode::BAD_REQUEST,

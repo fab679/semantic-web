@@ -13,6 +13,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 hmac = "0.12"
 sha2 = "0.10"
 aes-gcm = "0.10"
+subtle = "2"
 rand = "0.9"
 urlencoding = "2"
 base64 = "0.22"

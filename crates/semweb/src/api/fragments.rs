@@ -21,6 +21,16 @@ pub async fn fragments(
     let predicate = params.get("predicate").filter(|s| !s.is_empty()).map(String::as_str);
     let object = params.get("object").filter(|s| !s.is_empty()).map(String::as_str);
     let graph = params.get("graph").filter(|s| !s.is_empty()).map(String::as_str);
+    // Reserved-graph guard: service-managed graphs hold hub state
+    // (subscriptions, delivery log, shapes) — do not serve them as data.
+    if let Some(g) = graph {
+        if crate::store::persistence::is_reserved_graph(g) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "graph URI is reserved for service state".into(),
+            ));
+        }
+    }
     let limit = params
         .get("limit")
         .and_then(|v| v.parse().ok())

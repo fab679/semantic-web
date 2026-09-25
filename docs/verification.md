@@ -16,7 +16,7 @@ Oxigraph :7878), demo write token, demo term aliases
 | Standard vocabularies compact automatically — a term never seen in the demo | inserted `http://schema.org/address` → rendered `"schema:address":"42 Main St"` with zero code/config changes |
 | Unknown namespaces stay honest full URIs | `http://example.org/private-ns/rating` rendered verbatim |
 | Typed values keep their types | `{"@value":"2001-04-03","@type":"xsd:date"}` |
-| Round-trip through `/context.jsonld` | context serves prefixes (`foaf` → namespace) **and** term definitions (`name` → `{"@id": …}`); **proven with pyld**: the aliased document expands back to `http://xmlns.com/foaf/0.1/name` / `http://schema.org/worksFor` |
+| Round-trip through `/context.jsonld` | context serves prefixes (`foaf` → namespace) **and** term definitions (`name` → `{"@id": …}`); `xsd` is always present so typed literals round-trip too; **proven with pyld**: the aliased document expands back to `http://xmlns.com/foaf/0.1/name` / `http://schema.org/worksFor` |
 
 ## 2. "Self-description is live" (no build step)
 
@@ -42,6 +42,8 @@ no cache invalidation — sequential curls.
 | Write auth | `POST /admin/insert` without token → `401` |
 | Secrets encrypted at rest | store graph contains `enc:v1:fcU7…` (AES-GCM ciphertext) — never plaintext |
 | Rate limiting | 13 rapid subscribes, same callback → `202×10` then `429×3`, counter incremented |
+| Duplicate insert is a no-op | re-POST of the same triple → `"duplicate": true`, zero notifications, counters unchanged (e2e check 13) |
+| Reserved graphs are protected | write with `"graph": "http://semweb.dev/graph/hub/subscriptions"` → `400`; `?graph=` read → `400` |
 | SPARQL read-only **by construction** | `INSERT DATA` through `/sparql` → `400` (it forwards to the store's query endpoint, which cannot execute updates) |
 
 ## 5. Agents (MCP)
@@ -74,8 +76,8 @@ no cache invalidation — sequential curls.
 
 ## How to re-verify
 
-- One command: `./scripts/e2e.sh` (17 checks, exit code = verdict, runs in CI)
-- Unit tests: `cargo test` (24)
+- One command: `./scripts/e2e.sh` (18 checks, exit code = verdict, runs in CI)
+- Unit tests: `cargo test` (26)
 - The commands above are plain curl against a running stack.
 
 If any output ever contradicts a claim here, that's a bug — open an

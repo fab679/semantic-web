@@ -216,29 +216,33 @@ async fn insert_triple(state: &AppState, args: &Value) -> Value {
             );
         }
     }
-    let event_id = crate::hub::random_event_id();
-    match state
-        .store
-        .insert_triple(subject, predicate, object, args.get("graph").and_then(Value::as_str))
-        .await
+    // Shared pipeline with POST /admin/insert: duplicate suppression,
+    // schema-change detection (fires /topics/schema), external-hub notify
+    // and the reserved-graph guard.
+    match crate::api::write::insert_and_publish(
+        state,
+        subject,
+        predicate,
+        object,
+        args.get("graph").and_then(Value::as_str),
+    )
+    .await
     {
-        Ok(binding) => {
-            crate::api::counters_insert();
-            let object_uri = object.starts_with("http://").then_some(object);
-            state.cardinality.record_insert(
-                subject,
-                predicate,
-                object_uri,
-                crate::context::RDF_TYPE,
-            );
-            let _ = state.hub.clone().publish("/topics/data", &event_id).await;
-            let triple = crate::jsonld::binding_to_line(&binding, &state.prefixes).unwrap_or(binding);
-            super::tool_text(format!(
-                "inserted (event {event_id}):\n{}",
-                serde_json::to_string_pretty(&triple).unwrap_or_default()
-            ))
+        Ok(outcome) => {
+            let summary = serde_json::to_string_pretty(&outcome.triple).unwrap_or_default();
+            if outcome.duplicate {
+                super::tool_text(format!(
+                    "no change (triple already exists; event {}):\n{summary}",
+                    outcome.event_id
+                ))
+            } else {
+                super::tool_text(format!(
+                    "inserted (event {}):\n{summary}",
+                    outcome.event_id
+                ))
+            }
         }
-        Err(e) => super::tool_error(&e.0),
+        Err((_, msg)) => super::tool_error(&msg),
     }
 }
 

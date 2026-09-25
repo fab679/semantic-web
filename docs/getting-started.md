@@ -85,6 +85,7 @@ curl -X POST http://localhost:8484/admin/insert \
 ```json
 {"event_id":"440b3df8889a033b",
  "inserted":{"@id":"http://example.org/dave","name":"Dave"},
+ "duplicate":false,
  "data_subscribers_notified":0,
  "schema_changed":false,
  "schema_subscribers_notified":0}

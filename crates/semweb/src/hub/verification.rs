@@ -9,12 +9,15 @@
 //!   - any other 3xx/4xx/5xx    -> verification failed: no change
 //!   - 2xx + wrong body         -> verification failed: no change
 //!
+//! Unreachable callbacks and 5xx answers are retried (see
+//! VERIFICATION_ATTEMPTS); when verification finally fails on a
+//! subscribe, the hub sends an explicit §5.2 denied notification so the
+//! subscriber does not wait on a subscription that will never activate.
+//!
 //! Committing a subscribe (re)creates/extends the (topic, callback)
 //! subscription with the hub-determined lease; committing an unsubscribe
 //! removes it. A previously active subscription is only touched once the
-//! NEW action is verified, per §5.1. Committed state is persisted to
-//! HUB_GRAPH (encrypted secrets when a key is configured) so it survives
-//! restarts.
+//! NEW action is verified, per §5.1.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,6 +33,15 @@ use crate::store::persistence as persist;
 pub const DEFAULT_LEASE_SECS: u64 = 86_400; // 1 day when hub.lease_seconds omitted
 pub const MAX_LEASE_SECS: u64 = 864_000; // 10 days cap
 pub const MIN_LEASE_SECS: u64 = 60;
+
+/// Verification retry policy. A callback that is briefly unreachable at
+/// subscription time (booting service, DNS hiccup) is the common failure,
+/// so the hub retries transient failures before giving up. A 404 (the
+/// subscriber explicitly rejecting the action) and other 3xx/4xx are NOT
+/// retried — the subscriber answered, the answer is "no".
+const VERIFICATION_ATTEMPTS: usize = 3;
+const VERIFICATION_RETRY_DELAYS: [Duration; VERIFICATION_ATTEMPTS - 1] =
+    [Duration::from_secs(2), Duration::from_secs(5)];
 
 pub(crate) fn clamp_lease(requested: Option<u64>) -> u64 {
     requested
@@ -114,76 +126,143 @@ pub(crate) async fn verify_and_commit(
         }
     };
 
-    match hub.http.get(&url).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            let body = resp.text().await.unwrap_or_default();
-            if body.trim() == challenge {
-                hub.metrics.verifications_ok.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                match intent {
-                    Intent::Subscribe { secret, lease } => {
-                        let expires = now_epoch() + lease;
-                        tracing::info!(topic = canonical_topic, callback, "subscription verified");
-                        hub.subs.write().await.insert(
-                            (submitted_topic.to_string(), callback.to_string()),
-                            Subscription {
-                                secret: secret.clone(),
-                                lease_expires: std::time::Instant::now()
-                                    + Duration::from_secs(lease),
-                                lease_expires_epoch: expires,
-                            },
-                        );
-                        let stored_secret = secret.as_deref().map(|s| hub.crypto.encrypt(s));
-                        if let Err(e) = hub
-                            .store
-                            .persist_hub_subscription(
-                                &persist::subscription_persist_id(submitted_topic, callback),
-                                submitted_topic,
-                                callback,
-                                stored_secret.as_deref(),
-                                expires,
-                            )
-                            .await
-                        {
-                            tracing::warn!("subscription persistence failed: {e}");
-                        }
-                    }
-                    Intent::Unsubscribe => {
-                        tracing::info!(topic = canonical_topic, callback, "unsubscribed");
-                        let id = persist::subscription_persist_id(submitted_topic, callback);
-                        hub.subs
-                            .write()
-                            .await
-                            .remove(&(submitted_topic.to_string(), callback.to_string()));
-                        if let Err(e) = hub.store.delete_hub_subscription(&id).await {
-                            tracing::warn!("persisted subscription {id} removal failed: {e}");
-                        }
-                    }
+    let mut attempt: usize = 0;
+    // Final exhaustion detail: Some((unreachable, detail)) after all
+    // attempts; the loop diverges on every terminal branch otherwise.
+    let failure: Option<(bool, String)> = loop {
+        if attempt > 0 {
+            tokio::time::sleep(VERIFICATION_RETRY_DELAYS[attempt - 1]).await;
+        }
+        match hub.http.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let body = resp.text().await.unwrap_or_default();
+                if body.trim() == challenge {
+                    hub.metrics
+                        .verifications_ok
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    commit(hub, canonical_topic, submitted_topic, callback, intent).await;
+                    return;
                 }
-            } else {
+                // §5.3.1: 2xx with the wrong body is a failed verification;
+                // state unchanged, no retry (the subscriber answered wrong).
                 hub.metrics
                     .verifications_failed
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 tracing::warn!(
                     "verification body mismatch for {callback} ({mode}); state unchanged"
                 );
+                return;
+            }
+            Ok(resp) if resp.status().as_u16() == 404 => {
+                // The subscriber explicitly rejects the action: no retry.
+                hub.metrics
+                    .verifications_failed
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                tracing::warn!(
+                    "verification of {callback} ({mode}) -> 404 (subscriber rejected); state unchanged"
+                );
+                return;
+            }
+            Ok(resp) if resp.status().is_server_error() => {
+                if attempt + 1 < VERIFICATION_ATTEMPTS {
+                    // Transient server-side failure: retry.
+                    attempt += 1;
+                    continue;
+                }
+                break Some((false, format!("callback returned {}", resp.status())));
+            }
+            Ok(resp) => {
+                // §5.3.1: 3xx/4xx mean verification failed; no retry (the
+                // subscriber answered, the answer is "no").
+                hub.metrics
+                    .verifications_failed
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                tracing::warn!(
+                    "verification of {callback} ({mode}) -> {}; state unchanged",
+                    resp.status()
+                );
+                return;
+            }
+            Err(e) => {
+                if attempt + 1 < VERIFICATION_ATTEMPTS {
+                    attempt += 1;
+                    continue;
+                }
+                break Some((true, format!("unreachable: {e}")));
             }
         }
-        Ok(resp) => {
-            // §5.3.1: 3xx/4xx/5xx all mean verification failed. A 404 is
-            // the subscriber explicitly rejecting the action.
-            hub.metrics
-                .verifications_failed
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            tracing::warn!(
-                "verification of {callback} ({mode}) -> {}; state unchanged",
-                resp.status()
+    };
+
+    // Verification exhausted without a usable answer from the callback.
+    let (unreachable, detail) = failure.unwrap_or((false, String::new()));
+    hub.metrics
+        .verifications_failed
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    tracing::warn!(
+        "verification of {callback} ({mode}) failed after {VERIFICATION_ATTEMPTS} attempts \
+         ({detail}); state unchanged"
+    );
+    // §5.2: deny explicitly so the subscriber is not left waiting on a
+    // subscription that will never activate. Only for subscribe intents
+    // (a failed unsubscribe needs no notification).
+    if unreachable && matches!(intent, Intent::Subscribe { .. }) {
+        hub.send_denied(
+            callback,
+            submitted_topic,
+            "hub could not verify intent (callback unreachable)",
+        )
+        .await;
+    }
+}
+
+/// Commit a verified intent (§5.1/§5.3.1): subscribe (re)creates/extends
+/// the (topic, callback) subscription with the hub-determined lease;
+/// unsubscribe removes it. Committed state is persisted to HUB_GRAPH
+/// (encrypted secrets when a key is configured) so it survives restarts.
+async fn commit(
+    hub: Arc<Hub>,
+    canonical_topic: &str,
+    submitted_topic: &str,
+    callback: &str,
+    intent: Intent,
+) {
+    match intent {
+        Intent::Subscribe { secret, lease } => {
+            let expires = now_epoch() + lease;
+            tracing::info!(topic = canonical_topic, callback, "subscription verified");
+            hub.subs.write().await.insert(
+                (submitted_topic.to_string(), callback.to_string()),
+                Subscription {
+                    secret: secret.clone(),
+                    lease_expires: std::time::Instant::now() + Duration::from_secs(lease),
+                    lease_expires_epoch: expires,
+                },
             );
+            let stored_secret = secret.as_deref().map(|s| hub.crypto.encrypt(s));
+            if let Err(e) = hub
+                .store
+                .persist_hub_subscription(
+                    &persist::subscription_persist_id(submitted_topic, callback),
+                    submitted_topic,
+                    callback,
+                    stored_secret.as_deref(),
+                    expires,
+                )
+                .await
+            {
+                tracing::warn!("subscription persistence failed: {e}");
+            }
         }
-        Err(e) => {
-            hub.metrics
-                .verifications_failed
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            tracing::warn!("verification of {callback} ({mode}) unreachable: {e}");
+        Intent::Unsubscribe => {
+            tracing::info!(topic = canonical_topic, callback, "unsubscribed");
+            let id = persist::subscription_persist_id(submitted_topic, callback);
+            hub.subs
+                .write()
+                .await
+                .remove(&(submitted_topic.to_string(), callback.to_string()));
+            if let Err(e) = hub.store.delete_hub_subscription(&id).await {
+                tracing::warn!("persisted subscription {id} removal failed: {e}");
+            }
         }
     }
 }

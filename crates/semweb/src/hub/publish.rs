@@ -86,7 +86,7 @@ impl Hub {
             return Err("topic content exceeds the size cap".to_string());
         }
         Ok(TopicContent {
-            body: body.to_vec(),
+            body,
             content_type,
         })
     }
@@ -141,10 +141,12 @@ impl Hub {
                 tracing::warn!(event = event_id, callback, "delivery log write failed: {e}");
             } else {
                 // Claim for this delivery's own retry window so the
-                // periodic scan never re-enqueues a live delivery.
+                // periodic scan never re-enqueues a live delivery. The
+                // claim must cover the WORST-CASE delivery duration:
+                // 21s of retry sleeps + 4 attempts x 10s HTTP timeout.
                 let _ = self
                     .store
-                    .claim_delivery(&id, verification::now_epoch() + 90)
+                    .claim_delivery(&id, verification::now_epoch() + super::CLAIM_SECS)
                     .await;
             }
             let delivery = Delivery {
@@ -232,7 +234,7 @@ impl Hub {
                     }
                 }
                 Ok(TopicContent {
-                    body: body.into_bytes(),
+                    body: bytes::Bytes::from(body.into_bytes()),
                     content_type: "application/x-ndjson".to_string(),
                 })
             }
@@ -254,7 +256,7 @@ impl Hub {
                     },
                 });
                 Ok(TopicContent {
-                    body: serde_json::to_vec(&schema).unwrap_or_default(),
+                    body: bytes::Bytes::from(serde_json::to_vec(&schema).unwrap_or_default()),
                     content_type: "application/json".to_string(),
                 })
             }

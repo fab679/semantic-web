@@ -97,6 +97,7 @@ curl -X POST http://localhost:8484/admin/insert \
 ```json
 {"event_id":"c65e0d3ac1d09f42",
  "inserted":{"@id":"http://example.org/dave","employer":{"@id":"http://example.org/acme"}},
+ "duplicate":false,
  "data_subscribers_notified":1,
  "schema_changed":false,
  "schema_subscribers_notified":0}
@@ -106,6 +107,11 @@ Behavior:
 
 - `object` starting with `http://` / `https://` is stored as a **URI**;
   anything else as a **plain literal**.
+- Re-inserting an existing triple is a **no-op end to end**: the response
+  carries `"duplicate": true` with no counter update, no topic publish,
+  and no notifications.
+- `graph` URIs starting with `http://semweb.dev/graph/` are reserved for
+  service state and rejected with `400`.
 - The response's `event_id` is traceable end-to-end through logs,
   metrics and notifications.
 - `data_subscribers_notified` counts deliveries enqueued to active

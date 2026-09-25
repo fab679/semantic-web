@@ -43,17 +43,20 @@ exercised by the automated battery (`scripts/e2e.sh`).
 
 **Delivery semantics: at-least-once.** Every delivery is written to the
 durable log with a claim before it is queued, and acked (deleted) when
-finished. A worker crash leaves the claim to expire (~90s), after which
-another replica redelivers. Duplicates are possible only across
+finished. The claim (~3 minutes) covers the worst-case retry schedule,
+so an in-flight delivery is never re-enqueued by another worker or
+replica. A worker crash leaves the claim to expire, after which another
+replica redelivers. Duplicates are possible only across
 crash/retry windows — make consumer handling idempotent.
 
 ## Failure behavior (what to expect in incidents)
 
 | Failure | Behavior |
 |---|---|
-| Store down | `/health` reports `degraded`, reads 5xx; seed loads retry with backoff at startup |
-| Subscriber down | retries 1s/5s/15s, then the notification is dropped from the log; **subscription survives until lease end**; the next update retries delivery (spec §7) |
-| Service crashed mid-delivery | delivery-log entry's claim expires (~90s) → any replica redelivers on its scan (at-least-once) |
+| Store down | `/health` reports `degraded`, reads 5xx; seed + shapes loads retry for ~5 minutes at startup before giving up |
+| Subscriber down (callback unreachable at subscription time) | verification retried 3x (2s/5s apart), then an explicit §5.2 denied notification is sent; no phantom subscription |
+| Subscriber down (during delivery) | retries 1s/5s/15s, then the notification is dropped from the log; **subscription survives until lease end**; the next update retries delivery (spec §7) |
+| Service crashed mid-delivery | delivery-log entry's claim expires (~3 min) → any replica redelivers on its scan (at-least-once) |
 | Queue full | entry stays in the durable log (redelivered later), loud log + `semweb_queue_dropped_total` |
 | Callback returns 410 | subscription terminated |
 | Subscriber secret undecryptable (key changed/missing) | subscription survives, delivery unsigned until renewal; set `SEMWEB_SECRET_KEY` (64 hex chars) to encrypt at rest |
@@ -64,9 +67,11 @@ crash/retry windows — make consumer handling idempotent.
 
 | Area | Mechanism | Config |
 |---|---|---|
-| Write path | bearer token | `SEMWEB_WRITE_TOKEN` |
+| Write path | bearer token, constant-time compare | `SEMWEB_WRITE_TOKEN` |
 | Hub surface (who may subscribe) | bearer token (optional) | `SEMWEB_HUB_TOKEN` |
 | Subscriber secrets at rest | AES-256-GCM (AEAD, tamper-rejecting) | `SEMWEB_SECRET_KEY` |
+| Hub-state integrity | service-reserved named graphs are rejected on the write path and hidden from `?graph=` reads — hub state cannot be forged through the public API | built in |
+| Fetch policy (open hub) | third-party topic URLs respect the same host allowlist as callbacks | `SEMWEB_CALLBACK_ALLOWLIST` |
 | Notification integrity | HMAC-SHA256 `X-Hub-Signature` per §7.1 (sha256 minimum per §8.3) | per-subscription secret |
 | Intent verification | single-use random challenge, spec charset, no-binary rule (§8.2) | — |
 | Abuse control | per-callback token bucket | burst 10, refill 10/min |
@@ -95,7 +100,7 @@ between service and store (rides a mesh/sidecar).
 docker compose up --build -d                       # single replica
 docker compose --profile demo up -d                # + demo subscriber
 SEMWEB_REPLICA_COUNT=2 docker compose --profile scale up -d   # 2-shard cluster
-./scripts/e2e.sh                                   # full battery (17 checks), exit code = verdict
+./scripts/e2e.sh                                   # full battery (18 checks), exit code = verdict
 cargo test                                         # 24 unit tests
 uv run --project bench bench.py read               # latency harness (bench/)
 ```

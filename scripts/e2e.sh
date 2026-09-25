@@ -75,6 +75,11 @@ curl -sf -X POST "$BASE/admin/insert" -H "Authorization: Bearer demo-write-token
   -d '{"subject":"http://example.org/e2e","predicate":"http://xmlns.com/foaf/0.1/name","object":"E2E"}' \
   | grep -q event_id; check "write with token" $?
 
+DUP=$(curl -sf -X POST "$BASE/admin/insert" -H "Authorization: Bearer demo-write-token" -H 'Content-Type: application/json' \
+  -d '{"subject":"http://example.org/e2e","predicate":"http://xmlns.com/foaf/0.1/name","object":"E2E"}' \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("duplicate"), d.get("data_subscribers_notified"))')
+if [ "$DUP" = "True 0" ]; then check "duplicate insert suppressed (no push, no counter)" 0; else check "duplicate insert suppressed (no push, no counter)" 1; fi
+
 say "WebSub: subscribe -> signed full-content delivery -> unsubscribe"
 docker compose --profile demo up -d demo-subscriber >/dev/null
 curl -sf -X POST "$BASE/hub" -d "hub.mode=subscribe" -d "hub.topic=http://localhost:8484/topics/data" \

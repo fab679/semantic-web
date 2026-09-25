@@ -59,6 +59,15 @@ pub struct Shape {
     pub datatype: Option<String>,
 }
 
+/// Graph URIs the service manages itself (see HUB_GRAPH,
+/// HUB_DELIVERIES_GRAPH, SHAPES_GRAPH). The write path rejects these so
+/// hub state (subscriptions, delivery log, shapes) cannot be forged
+/// through the public write API — bypassing the §5.3 verification
+/// handshake.
+pub fn is_reserved_graph(graph: &str) -> bool {
+    graph.starts_with("http://semweb.dev/graph/")
+}
+
 /// Stable identity for a (topic, callback) subscription: the first 16
 /// bytes of sha256(topic \0 callback), hex. Used as the persistence key,
 /// for replica ownership (see hub::mod) and as the durable delivery-log key.
@@ -339,6 +348,16 @@ fn now_epoch() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_reserved_graph_matches_the_service_namespace() {
+        assert!(is_reserved_graph(HUB_GRAPH));
+        assert!(is_reserved_graph(HUB_DELIVERIES_GRAPH));
+        assert!(is_reserved_graph(SHAPES_GRAPH));
+        assert!(is_reserved_graph("http://semweb.dev/graph/other"));
+        assert!(!is_reserved_graph("http://example.org/graphs/tenant-a"));
+        assert!(!is_reserved_graph("http://semweb.dev/graphs/lookalike"));
+    }
 
     #[test]
     fn subscription_id_is_stable_and_distinct() {

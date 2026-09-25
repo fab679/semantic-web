@@ -306,11 +306,7 @@ impl SparqlStore {
         object: &str,
         graph: Option<&str>,
     ) -> Result<Value, StoreError> {
-        let obj = if object.starts_with("http://") || object.starts_with("https://") {
-            format!("<{object}>")
-        } else {
-            escape_literal(object)
-        };
+        let obj = object_term(object);
         let body = match graph {
             Some(g) => format!("GRAPH <{g}> {{ <{subject}> <{predicate}> {obj} }}"),
             None => format!("<{subject}> <{predicate}> {obj}"),
@@ -332,6 +328,48 @@ impl SparqlStore {
         }))
     }
 
+    /// Whether the exact triple already exists (ASK). The write path uses
+    /// this to suppress duplicate inserts: INSERT DATA is idempotent in
+    /// the store, but re-inserting must not bump cardinality counters or
+    /// publish a no-op notification.
+    pub async fn triple_exists(
+        &self,
+        subject: &str,
+        predicate: &str,
+        object: &str,
+        graph: Option<&str>,
+    ) -> Result<bool, StoreError> {
+        let obj = object_term(object);
+        let where_clause = match graph {
+            Some(g) => format!("GRAPH <{g}> {{ <{subject}> <{predicate}> {obj} }}"),
+            None => format!("{{ <{subject}> <{predicate}> {obj} }}"),
+        };
+        let query = format!("ASK WHERE {where_clause}");
+        let resp = self
+            .http
+            .get(&self.query_url)
+            .query(&[("query", query.as_str())])
+            .header("Accept", "application/sparql-results+json")
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(StoreError(format!("ask {} -> {query}", status)));
+        }
+        let doc: Value = resp.json().await?;
+        Ok(doc.get("boolean").and_then(Value::as_bool).unwrap_or(false))
+    }
+
+}
+
+/// SPARQL term for an object: a URI when it carries an http(s) scheme,
+/// else a quoted literal (same rule the write path documents).
+fn object_term(object: &str) -> String {
+    if object.starts_with("http://") || object.starts_with("https://") {
+        format!("<{object}>")
+    } else {
+        escape_literal(object)
+    }
 }
 
 /// Serialize a plain string as a SPARQL literal with basic escaping

@@ -79,6 +79,12 @@ pub const TOPICS: [&str; 2] = ["/topics/data", "/topics/schema"];
 /// Sanity cap on third-party topic content fetched at publish time.
 pub const MAX_EXTERNAL_CONTENT_BYTES: usize = 16 * 1024 * 1024; // 16 MiB
 
+/// How long a delivery's durable-log claim covers. Must exceed the
+/// worst-case delivery duration (retry sleeps 1+5+15s plus up to 4
+/// attempts x 10s HTTP timeout ≈ 61s) so the periodic replica scan can
+/// never re-enqueue a delivery that is still being retried in-flight.
+pub const CLAIM_SECS: u64 = 180;
+
 #[derive(Debug)]
 pub enum HubError {
     /// §5.1.2: 4xx with plain-text error description for bad requests.
@@ -92,8 +98,29 @@ pub enum HubError {
 /// Resolve a submitted hub.topic to one of our canonical topic paths.
 /// Subscribers should use the rel=self URL from discovery (absolute);
 /// accepting the bare path keeps local development and tests friendly.
+/// A URL only matches when the topic path is the ENTIRE path component —
+/// "http://x/topics/data" resolves, "http://x/other/topics/data" does not.
 pub fn resolve_topic(topic: &str) -> Option<&'static str> {
-    TOPICS.into_iter().find(|&t| topic == t || topic.ends_with(t)).map(|v| v as _)
+    TOPICS
+        .into_iter()
+        .find(|&t| {
+            topic == t
+                || (topic.ends_with(t)
+                    && url_is_scheme_authority(&topic[..topic.len() - t.len()]))
+        })
+        .map(|v| v as _)
+}
+
+/// True when `base` is exactly `scheme://authority` (no extra path), the
+/// only prefix that leaves the topic path as the full path component.
+fn url_is_scheme_authority(base: &str) -> bool {
+    let authority = base
+        .strip_prefix("http://")
+        .or_else(|| base.strip_prefix("https://"));
+    match authority {
+        Some(authority) => !authority.is_empty() && !authority.contains('/'),
+        None => false,
+    }
 }
 
 #[derive(Clone)]
@@ -105,9 +132,12 @@ pub(crate) enum Intent {
 /// Content of a topic at publish time (spec §7: the hub MUST send the
 /// full contents of the topic URL, with a Content-Type matching the
 /// topic's; payloads may be reduced to diffs only for Atom/RSS).
+///
+/// The body is `Bytes` so per-subscriber clones (one queued delivery
+/// each) are O(1) reference-count bumps, not full-content copies.
 #[derive(Clone)]
 pub struct TopicContent {
-    pub body: Vec<u8>,
+    pub body: bytes::Bytes,
     /// String (not &'static) because third-party topics fetch their
     /// content type from the publisher's response at publish time.
     pub content_type: String,
@@ -329,8 +359,20 @@ impl Hub {
 
         // §5.1 policy enforcement (hubs MAY reject callback/topic URLs):
         // HTTPS requirement when secrets are used, and the optional
-        // callback host allowlist.
-        if secret.is_some() && self.config.require_https_callbacks && !callback.starts_with("https://") {
+        // callback-host allowlist. Third-party topics (open hub) must
+        // respect the same allowlist — the publish-time fetch is an SSRF
+        // surface identical to callback delivery.
+        if resolve_topic(&topic).is_none()
+            && !allowlist_ok(&self.config.callback_allowlist, &topic)
+        {
+            return Err(HubError::BadRequest(
+                "topic URL host is not in the configured allowlist".into(),
+            ));
+        }
+        if secret.is_some()
+            && self.config.require_https_callbacks
+            && !callback.starts_with("https://")
+        {
             return Err(HubError::BadRequest(
                 "hub.secret requires an https:// callback (hub policy)".into(),
             ));
@@ -372,9 +414,15 @@ impl Hub {
     /// Subscriber-initiated unsubscribe (spec §5.1/§5.3). Same
     /// verification dance; lease_seconds MUST be ignored for
     /// unsubscription, so none is sent in the verification request.
+    /// Unsubscribe requests are also rate-limited (same per-callback
+    /// bucket as subscribe — §5.1 covers both as subscription requests).
     pub async fn unsubscribe(self: Arc<Self>, topic: String, callback: String) -> Result<(), HubError> {
         let canonical = topic_allowed(&topic, self.config.open_hub)
             .ok_or_else(|| HubError::UnknownTopic(format!("unknown topic: {topic}")))?;
+        if !self.rate.check(&callback).await {
+            self.metrics.rate_limited.fetch_add(1, Ordering::Relaxed);
+            return Err(HubError::TooManyRequests);
+        }
         let canonical = canonical.to_string();
         let hub = self.clone();
         tokio::spawn(async move {
@@ -457,21 +505,23 @@ pub fn random_event_id() -> String {
 }
 
 /// §5.1 callback-host policy: allow-list of host suffixes. Empty list =
-/// allow everything. Host extracted between "://" and the next '/' or ':'.
-fn allowlist_ok(allowlist: &[String], callback: &str) -> bool {
+/// allow everything. Used for subscriber callbacks AND (when the open-hub
+/// policy is enabled) for third-party topic URLs — the same lever gates
+/// both SSRF surfaces (callback delivery and publish-time fetch).
+pub(crate) fn allowlist_ok(allowlist: &[String], url: &str) -> bool {
     if allowlist.is_empty() {
         return true;
     }
     allowlist
         .iter()
-        .any(|allowed| host_matches(callback, allowed))
+        .any(|allowed| host_matches(url, allowed))
 }
 
-fn host_matches(callback: &str, allowed_suffix: &str) -> bool {
-    let host = callback
+fn host_matches(url: &str, allowed_suffix: &str) -> bool {
+    let host = url
         .split("://")
         .nth(1)
-        .unwrap_or(callback)
+        .unwrap_or(url)
         .split(['/', ':'])
         .next()
         .unwrap_or("");
@@ -492,6 +542,12 @@ mod tests {
         );
         assert_eq!(resolve_topic("http://other/topics/schema"), Some("/topics/schema"));
         assert_eq!(resolve_topic("/topics/nope"), None);
+        // extra path segments before the topic path do NOT resolve
+        assert_eq!(resolve_topic("http://x/other/topics/data"), None);
+        assert_eq!(resolve_topic("http://x/a/b/topics/data"), None);
+        assert_eq!(resolve_topic("/other/topics/data"), None);
+        // query strings are not part of a topic URL match
+        assert_eq!(resolve_topic("http://x/topics/data?x=1"), None);
     }
 
     #[test]

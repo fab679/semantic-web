@@ -15,6 +15,7 @@ mod store;
 mod util;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::state::{build_state, AppState};
 use crate::store::persistence::SHAPES_GRAPH;
@@ -53,28 +54,15 @@ async fn main() {
         state.hub.config().external_hubs.len()
     );
 
-    // Background task 1: seed + optional SHACL shapes (idempotent;
-    // load_seed retries while Oxigraph boots), then warm the cardinality
-    // counters and load persisted subscriptions/deliveries.
+    // Background task 1: seed + optional SHACL shapes, retried while the
+    // store boots (compose starts containers concurrently and the
+    // Oxigraph image is distroless, so compose cannot healthcheck-gate
+    // it — a fixed small retry budget is not enough). Then warm the
+    // cardinality counters and load persisted subscriptions/deliveries.
     {
         let state = state.clone();
         tokio::spawn(async move {
-            if let Ok(seed) = std::env::var("SEMWEB_SEED_PATH") {
-                match state.store.load_seed(std::path::Path::new(&seed), None).await {
-                    Ok(()) => tracing::info!("seed loaded from {seed}"),
-                    Err(e) => tracing::error!("seed load failed: {e}"),
-                }
-            }
-            if let Ok(shapes) = std::env::var("SEMWEB_SHACL_PATH") {
-                // Clear-then-load: shape files contain blank nodes, which
-                // get fresh labels on every load (unlike URI triples, RDF
-                // set semantics does not deduplicate those).
-                let _ = state.store.clear_graph(SHAPES_GRAPH).await;
-                match state.store.load_seed(std::path::Path::new(&shapes), Some(SHAPES_GRAPH)).await {
-                    Ok(()) => tracing::info!("SHACL shapes loaded into {SHAPES_GRAPH}"),
-                    Err(e) => tracing::error!("shapes load failed: {e}"),
-                }
-            }
+            load_startup_files(&state).await;
             warm_state(&state).await;
         });
     }
@@ -154,13 +142,66 @@ async fn warm_state(state: &AppState) {
     state.hub.load_persisted().await;
 }
 
+/// Startup file-load retry policy. Compose starts containers
+/// concurrently and the store may take a while to boot; load_seed's
+/// internal budget (10 x 2s) covers a normal boot, this outer loop adds
+/// ~5 more minutes before giving up. If the store never appears, seed
+/// and shapes are skipped (counters and subscriptions recover on their
+/// periodic refresh schedules; the store stays empty until data is
+/// written).
+const STARTUP_LOAD_TRIES: usize = 60;
+const STARTUP_LOAD_BACKOFF: Duration = Duration::from_secs(5);
+
+async fn load_with_retry(state: &AppState, what: &str, path: &std::path::Path, graph: Option<&str>) {
+    for attempt in 0..STARTUP_LOAD_TRIES {
+        if let Some(g) = graph {
+            // Clear-then-load: shape files contain blank nodes, which
+            // get fresh labels on every load (unlike URI triples, RDF
+            // set semantics does not deduplicate those).
+            let _ = state.store.clear_graph(g).await;
+        }
+        match state.store.load_seed(path, graph).await {
+            Ok(()) => {
+                tracing::info!("{what} loaded from {}", path.display());
+                return;
+            }
+            Err(e) if attempt + 1 < STARTUP_LOAD_TRIES => {
+                tracing::warn!(
+                    "{what} load attempt {} failed ({e}); retrying in {STARTUP_LOAD_BACKOFF:?}",
+                    attempt + 1
+                );
+                tokio::time::sleep(STARTUP_LOAD_BACKOFF).await;
+            }
+            Err(e) => {
+                tracing::error!("{what} load failed after {STARTUP_LOAD_TRIES} attempts: {e}");
+                return;
+            }
+        }
+    }
+}
+
+async fn load_startup_files(state: &AppState) {
+    if let Ok(seed) = std::env::var("SEMWEB_SEED_PATH") {
+        load_with_retry(state, "seed", std::path::Path::new(&seed), None).await;
+    }
+    if let Ok(shapes) = std::env::var("SEMWEB_SHACL_PATH") {
+        load_with_retry(
+            state,
+            "SHACL shapes",
+            std::path::Path::new(&shapes),
+            Some(SHAPES_GRAPH),
+        )
+        .await;
+    }
+}
+
 fn router(state: Arc<AppState>) -> axum::Router {
     use axum::routing::{get, post};
     axum::Router::new()
         .route("/", get(api::root))
         .route("/context.jsonld", get(api::context_jsonld))
         .route("/fragments", get(api::fragments))
-        .route("/sparql", get(api::sparql))
+        .route("/sparql", get(api::sparql).post(api::sparql_post))
         .route("/manifest", get(api::manifest))
         .route("/ui", get(api::explorer))
         .route("/events", get(api::events))

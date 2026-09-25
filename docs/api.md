@@ -25,7 +25,7 @@ NDJSON streaming, JSON-LD, SSE. No SDK, no custom media types.
 | GET | `/` | Live self-description (classes, predicates, controls) + discovery Link headers |
 | GET | `/context.jsonld` | JSON-LD `@context`, generated live from namespaces in use |
 | GET | `/fragments` | Triple Pattern Fragment, streamed as NDJSON-LD, cursor or offset pagination |
-| GET | `/sparql` | Read-only SPARQL 1.1 Protocol passthrough (the execution plane) |
+| GET | `/sparql` | Read-only SPARQL 1.1 Protocol passthrough (the execution plane); POST supported for long queries |
 | GET | `/manifest` | Agent manifest: schema fingerprint, cardinalities, descriptions, shapes, examples |
 | GET | `/ui` | Graph Explorer (single-page browser UI over the same endpoints) |
 | GET | `/events` | SSE change feed for live sessions (complement to WebSub) |
@@ -85,6 +85,7 @@ use in the store, plus term aliases as JSON-LD term definitions:
 {
   "@context": {
     "type": "@type",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
     "schema": "http://schema.org/",
@@ -99,11 +100,12 @@ use in the store, plus term aliases as JSON-LD term definitions:
 }
 ```
 
-Prefixes/aliases come from the standard table plus
-`SEMWEB_EXTRA_PREFIXES` / `SEMWEB_TERM_ALIASES`. Only registered
-prefixes are emitted; namespaces without a registered prefix appear as
-full URIs in the data — the context need not (and cannot honestly) name
-them.
+`xsd` is always present (datatypes in the data render as `xsd:date` etc.,
+so a JSON-LD processor can round-trip them). Prefixes/aliases come from
+the standard table plus `SEMWEB_EXTRA_PREFIXES` / `SEMWEB_TERM_ALIASES`.
+Only registered prefixes are emitted; namespaces without a registered
+prefix appear as full URIs in the data — the context need not (and
+cannot honestly) name them.
 
 ## `GET /fragments`
 
@@ -115,7 +117,7 @@ omitted positions are wildcards).
 | `subject` | URI to match on subject |
 | `predicate` | URI to match on predicate |
 | `object` | URI (auto-detected via `http(s)://` prefix) or plain literal |
-| `graph` | Optional named graph (multi-tenancy: tenants map to graphs); absent = default graph |
+| `graph` | Optional named graph (multi-tenancy: tenants map to graphs); absent = default graph. Service-reserved graph URIs (`http://semweb.dev/graph/…`) are rejected with `400` |
 | `after` | Opaque cursor from a previous page's control line — O(1) seek pagination |
 | `limit` | Page size, default 100, max 1000 |
 | `offset` | Legacy skip count (cursor pagination is preferred; results are deterministic either way — ordered by the string forms of s, p, o) |
@@ -155,20 +157,33 @@ graph, single-predicate, or single-subject patterns), else from an exact
 server COUNT; with `after` or `graph` present it is always an exact
 COUNT.
 
-## `GET /sparql?query=...`
+## `GET /sparql?query=...` and `POST /sparql`
 
 Read-only SPARQL 1.1 Protocol passthrough — the execution plane, one
-hop from the discovery plane. The query is forwarded to the store's
+hop from the discovery plane. Queries are forwarded to the store's
 `/query` endpoint, which only executes SPARQL Query forms
 (SELECT/ASK/DESCRIBE/CONSTRUCT); updates live on a separate URL this
 handler never touches, so read-only is guaranteed by construction.
 
 ```sh
+# GET (short queries)
 curl "http://localhost:8484/sparql?query=SELECT%20%3Fs%20%3Fname%20WHERE%20%7B%20%3Fs%20%3Chttp%3A%2F%2Fxmlns.com%2Ffoaf%2F0.1%2Fname%3E%20%3Fname%20%7D"
+
+# POST, form-encoded (long queries)
+curl -X POST http://localhost:8484/sparql \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "query=SELECT ?s ?name WHERE { ?s <http://xmlns.com/foaf/0.1/name> ?name }"
+
+# POST, raw query body (SPARQL 1.1 Protocol §2.2)
+curl -X POST http://localhost:8484/sparql \
+  -H "Content-Type: application/sparql-query" \
+  -d "ASK WHERE { ?s ?p ?o }"
 ```
 
 Response: the store's SPARQL JSON results, content-type preserved.
-Missing/empty `query` → `400`.
+`Content-Type: application/sparql-update` is rejected with `400` —
+read-only by construction (updates live on a separate store URL this
+handler never touches). Missing/empty `query` → `400`.
 
 ## `GET /manifest`
 
@@ -266,7 +281,7 @@ version `2025-06-18`. Three capability groups:
 | `sparql_query` | `query` (required) | Read-only SPARQL; appends a "0 results → check URI casing" hint on empty results |
 | `get_manifest` | — | The live agent manifest (same document as `GET /manifest`) |
 | `get_topic` | `topic` (`/topics/data` or `/topics/schema`) | Full topic content |
-| `insert_triple` | `subject`, `predicate`, `object`, `graph`, `token` | Write path; honours `SEMWEB_WRITE_TOKEN` (pass it as the `token` argument when the deployment gates writes) |
+| `insert_triple` | `subject`, `predicate`, `object`, `graph`, `token` | Write path; honours `SEMWEB_WRITE_TOKEN` (pass it as the `token` argument when the deployment gates writes). Shares the pipeline with `POST /admin/insert`: duplicate inserts are reported as "no change" (no counter bump, no push) and a brand-new class/predicate fires `/topics/schema` |
 | `subscribe` | `topic`, `callback`, `secret`, `lease_seconds` | WebSub subscription on behalf of a callback URL (the callback must implement the subscriber contract) |
 
 Tool text is capped at 8,000 characters (`_truncated: true` marks a cut)
@@ -341,16 +356,18 @@ Unknown additional parameters are ignored, as the spec requires.
 | `hub.lease_seconds` | Optional requested lease; hub clamps to [60s, 10 days], default 1 day (§5.3: expirations are mandatory, never perpetual) |
 | `hub.secret` | Optional HMAC secret, MUST be < 200 bytes (§5.1) |
 
-Subscriptions are rate-limited per callback (burst 10, refill 10/min;
-exceeded → `429`), **persist to the store in a dedicated named graph**
-(a restart reloads them; expired leases are dropped on load per §5.3),
-and secrets are **AES-256-GCM encrypted at rest** when
+Subscription requests **persist to the store in a dedicated named
+graph** (a restart reloads them; expired leases are dropped on load per
+§5.3), and secrets are **AES-256-GCM encrypted at rest** when
 `SEMWEB_SECRET_KEY` is configured.
 
 Hub policies (§5.1 allows hubs to set their own): `SEMWEB_HUB_TOKEN`
 requires a bearer token on POST /hub; `SEMWEB_REQUIRE_HTTPS_CALLBACKS`
 rejects http:// callbacks that registered a secret; `SEMWEB_CALLBACK_ALLOWLIST`
-restricts callback hosts (suffix match).
+restricts callback hosts (suffix match) — and, when the open-hub policy
+is on, third-party topic URLs as well. Both subscribe and unsubscribe
+requests share one rate-limit bucket per callback (burst 10, refill
+10/min; exceeded → `429`).
 
 Deliveries are **at-least-once**: every delivery is logged in the
 store before enqueue and acked on completion, so a crash mid-flight
@@ -378,10 +395,15 @@ Responses:
 The hub GETs the callback with `hub.mode`, `hub.topic`, `hub.challenge`
 and (for subscribe) `hub.lease_seconds` appended to the callback's
 existing query string. The callback must respond 2xx with the challenge
-as the body. The example `demo-subscriber` binary shows the correct
-subscriber behavior, including the §8.2 safe-media-type + nosniff
-mitigations. Unsubscribe works identically with `hub.mode=unsubscribe`
-(no lease semantics).
+as the body. Unreachable callbacks and transient 5xx answers are
+retried (3 attempts, 2s/5s apart); a wrong challenge echo, a 404, or
+another 3xx/4xx fails immediately. If verification finally fails on a
+subscribe, the hub sends an explicit §5.2 denied notification
+(`hub.mode=denied` GET) so the subscriber is not left waiting on a
+subscription that will never activate. The example `demo-subscriber`
+binary shows the correct subscriber behavior, including the §8.2
+safe-media-type + nosniff mitigations. Unsubscribe works identically
+with `hub.mode=unsubscribe` (no lease semantics).
 
 ### Topics
 
@@ -477,12 +499,15 @@ curl -X POST http://localhost:8484/admin/insert \
 
 Body: `subject`, `predicate`, `object` (required; `object` becomes a
 URI when it starts with `http(s)://`, else a plain literal) and an
-optional `"graph"` for tenant isolation (absent = default graph).
+optional `"graph"` for tenant isolation (absent = default graph;
+service-reserved graph URIs `http://semweb.dev/graph/…` are rejected
+with `400`).
 
 ```json
 {
   "event_id": "440b3df8889a033b",
   "inserted": {"@id": "http://example.org/carol", "knows": {"@id": "http://example.org/alice"}},
+  "duplicate": false,
   "data_subscribers_notified": 1,
   "schema_changed": false,
   "schema_subscribers_notified": 0
@@ -491,6 +516,9 @@ optional `"graph"` for tenant isolation (absent = default graph).
 
 - `event_id` — one id for this mutation; ties write → publish → fan-out
   together across logs, metrics and (via the Link metadata) deliveries.
+- `duplicate` — `true` when the exact triple already existed: no store
+  change, no counter bump, no topic publish, no notifications (a
+  re-POSTed triple is a no-op end to end).
 - `schema_changed` — `true` when the insert introduced a class or
   predicate not previously in use (detected O(1) from the counters, not
   by re-diffing the whole schema) — `/topics/schema` fires in addition

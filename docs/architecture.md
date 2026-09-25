@@ -122,7 +122,7 @@ The full conformance map, section numbers referring to docs/WebSub.md:
 | §5.1.2 `202` immediately; MUST NOT depend on verification outcome | verification runs in a spawned task after the response |
 | §5.3 intent verification: GET callback with hub.mode, hub.topic, hub.challenge, hub.lease_seconds | `verify_and_commit` |
 | §5.3 challenge charset (`+ - . / 0-9 = A-Z _ a-z`) and §8.2 no-binary | `generate_challenge` (URL-safe subset, 43 chars) |
-| §5.3.1 2xx + body == challenge commits; wrong body / 3xx / 4xx / 5xx leaves state unchanged | `verify_and_commit` |
+| §5.3.1 2xx + body == challenge commits; wrong body / 3xx / 4xx leaves state unchanged | `verify_and_commit` (unreachable + 5xx retried 3x; final subscribe failure sends an explicit §5.2 denied notification) |
 | §5.1 re-requests of active subscriptions allowed; state overridden only after verification | commit-on-success in `verify_and_commit` |
 | §5.1 hub.secret MUST be < 200 bytes | validated in hub/mod.rs, 4xx otherwise |
 | §5.3 hubs MUST enforce lease expirations; MUST NOT issue perpetual leases | default 1 day, clamped to [60s, 10 days], 30s sweeper task |
@@ -160,7 +160,9 @@ battery):
   10/min) on subscription requests; exhausted → `429` + metric.
 - **Callback policies** (§5.1) — optional HTTPS-callback requirement
   when secrets are used (`SEMWEB_REQUIRE_HTTPS_CALLBACKS`) and an
-  optional callback-host allowlist (`SEMWEB_CALLBACK_ALLOWLIST`).
+  optional callback-host allowlist (`SEMWEB_CALLBACK_ALLOWLIST`); under
+  the open-hub policy the same allowlist gates third-party topic URLs
+  (both are fetch/POST targets — one policy covers both SSRF surfaces).
 - **Hub auth** — `SEMWEB_HUB_TOKEN` optionally gates who may
   subscribe/unsubscribe/publish; `SEMWEB_WRITE_TOKEN` gates the write
   path; read endpoints stay open.

@@ -33,7 +33,7 @@ pub use manifest::manifest;
 pub(crate) use manifest::manifest_document;
 pub use mcp::mcp;
 pub use self_description::{context_jsonld, root};
-pub use sparql::sparql;
+pub use sparql::{sparql, sparql_post};
 pub use ui::explorer;
 pub use write::admin_insert;
 
@@ -47,6 +47,7 @@ use axum::body::Body;
 use bytes::Bytes;
 use futures::stream;
 use serde_json::Value;
+use subtle::ConstantTimeEq;
 
 use crate::hub::{HubError, TOPICS};
 use crate::state::AppState;
@@ -66,11 +67,6 @@ pub(crate) fn bump_fragments_requests() {
 
 pub(crate) fn bump_inserts() {
     counters::INSERTS_TOTAL.fetch_add(1, Ordering::Relaxed);
-}
-
-/// Alias used by the MCP insert_triple tool (keeps module boundaries clean).
-pub(crate) fn counters_insert() {
-    bump_inserts();
 }
 
 
@@ -126,19 +122,48 @@ fn internal(e: crate::store::StoreError) -> (StatusCode, String) {
 }
 
 /// Bearer-token check shared by the write path and (when configured) the
-/// hub endpoint.
+/// hub endpoint. Comparison is constant-time (subtle::ConstantTimeEq) so
+/// token validity is not observable through timing.
 pub(crate) fn bearer_ok(expected: &Option<String>, headers: &HeaderMap) -> bool {
-    match expected {
-        None => true,
-        Some(expected) => headers
-            .get(header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
-            == Some(expected.as_str()),
+    let Some(expected) = expected else {
+        return true; // endpoint is ungated
+    };
+    let provided = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    match provided {
+        Some(p) => bool::from(p.as_bytes().ct_eq(expected.as_bytes())),
+        None => false,
     }
 }
 
 /// Topics list for controls blocks.
 pub(crate) fn topics_value() -> Value {
     serde_json::json!(TOPICS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bearer_ok;
+    use axum::http::{header, HeaderMap, HeaderValue};
+
+    fn hdr(value: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(header::AUTHORIZATION, HeaderValue::from_str(value).unwrap());
+        h
+    }
+
+    #[test]
+    fn bearer_ok_requires_the_exact_token() {
+        let ungated: Option<String> = None;
+        assert!(bearer_ok(&ungated, &HeaderMap::new()));
+
+        let tok = Some("secret-token".to_string());
+        assert!(!bearer_ok(&tok, &HeaderMap::new()));
+        assert!(!bearer_ok(&tok, &hdr("Basic secret-token")));
+        assert!(!bearer_ok(&tok, &hdr("Bearer secret-toke")));
+        assert!(!bearer_ok(&tok, &hdr("Bearer  secret-token")));
+        assert!(bearer_ok(&tok, &hdr("Bearer secret-token")));
+    }
 }
