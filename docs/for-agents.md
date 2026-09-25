@@ -1,20 +1,19 @@
 # How agents use this
 
-An agent needs three things from a data source: **discovery** (what
+An agent needs four things from a data source: **discovery** (what
 exists), **grounding** (what it means), **execution** (get the facts),
-and ideally **reactivity** (know when it changed). This service provides
-all four as plain HTTP — no SDK, no training.
+and **reactivity** (know when it changed). This service provides all
+four as plain HTTP — no SDK, no training.
 
-## The four capabilities
-
-### 1. Discovery — `GET /` and `GET /manifest`
+## 1. Discovery — `GET /` and `GET /manifest`
 
 The manifest is the planning surface: every class and predicate, live
 cardinalities, **human descriptions** pulled from the graph
 (`rdfs:comment` / `skos:definition`), SHACL shapes (what's required,
-what's bounded), and an executable example SPARQL query per class. The
-`schemaFingerprint` identifies the exact ontology version so an agent can
-detect that its understanding went stale.
+what's bounded), the `prefixes` block for valid SPARQL, and an
+executable example SPARQL query per class. The `schemaFingerprint`
+identifies the exact ontology version so an agent can detect that its
+understanding went stale.
 
 ```json
 {
@@ -30,24 +29,24 @@ detect that its understanding went stale.
 }
 ```
 
-### 2. Execution — two ways
+## 2. Execution — two ways
 
 - **Fragments** (`GET /fragments`) — pattern lookup, streaming NDJSON,
   for the "look up who works at X" cases.
 - **SPARQL** (`GET /sparql?query=...`) — read-only, for multi-hop or
   aggregate questions. SPARQL is *fine* for LLMs to write; the hard part
-  was never the query language — it was knowing the vocabulary, which the
-  manifest solves (including the `prefixes` block to declare at the top
-  of queries, and the case-sensitive URIs to copy verbatim).
+  was never the query language — it was knowing the vocabulary, which
+  the manifest solves (including the `prefixes` block to declare at the
+  top of queries, and the case-sensitive URIs to copy verbatim).
 
-### 3. Real-time — WebSub and SSE
+## 3. Real-time — WebSub and SSE
 
 Durable agent-side services subscribe via WebSub (signed full-content
 pushes). Live agent runs watch `GET /events` (SSE) — the notification
 tells them *the graph changed*, and they refetch. No polling, no stale
 caches.
 
-### 4. MCP — the native LLM-agent surface
+## 4. MCP — the native LLM-agent surface
 
 `POST /mcp` is a full [MCP](https://modelcontextprotocol.io) server:
 JSON-RPC 2.0, three capability groups:
@@ -68,6 +67,14 @@ curl -X POST http://localhost:8484/mcp -H 'Content-Type: application/json' \
        "params":{"name":"search_graph",
                  "arguments":{"predicate":"http://schema.org/worksFor"}}}'
 ```
+
+Two tool-output details worth knowing:
+
+- Tool text is capped at 8,000 characters (`_truncated: true`) — bounded
+  outputs keep the model's context tidy.
+- `sparql_query` appends a hint when a query returns zero rows: either
+  the graph truly lacks the data, or a URI is mistyped (URIs are
+  case-sensitive — re-check `get_manifest` or run `search_graph`).
 
 ## The design pattern (the part worth stealing)
 
@@ -138,7 +145,7 @@ public read by default
 ## Worked example
 
 See [the Together AI agent tutorial](agent-tutorial.md) — a complete,
-runnable ~200-line agent whose tools are *discovered from the server*
+runnable ~270-line agent whose tools are *discovered from the server*
 via MCP, grounded on the manifest, and executed against the graph with
 Together AI's Llama 3.3 70B.
 

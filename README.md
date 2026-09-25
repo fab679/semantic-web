@@ -35,13 +35,17 @@ crates/semweb/             the service
     events.rs              GET /events (SSE change feed)
     hub_endpoints.rs       POST|GET /hub, GET /topics/{name}
     write.rs               POST /admin/insert (token-gated)
-    mcp.rs                 POST /mcp (minimal MCP resource server)
+    ui.rs                  GET /ui (embedded Graph Explorer)
+    mcp/                   full MCP server (mod.rs + tools.rs +
+                           resources.rs + prompts.rs)
     health_metrics.rs      GET /health, GET /metrics
   src/hub/
-    mod.rs                 hub core: subscriptions, publish fan-out (durable
-                           log + replica sharding), SSE broadcast, policies
+    mod.rs                 hub core: subscriptions, fan-out, policies
+    publish.rs             publish fan-out (durable log + replica
+                           sharding), open-hub fetch, external-hub notify
     verification.rs        spec §5.3 intent verification + leases
     delivery.rs            worker pool + §7 distribution + HMAC signing
+    reload.rs              startup recovery + multi-replica refresh loop
     crypto.rs              AES-256-GCM secret encryption at rest
     rate_limit.rs          per-callback token bucket
     metrics.rs             hub counters
@@ -51,13 +55,17 @@ crates/semweb/             the service
     cardinality.rs         maintained counters
     persistence.rs         hub-graph durability (subscriptions, delivery
                            log, SHACL shapes)
+  assets/ui/index.html     the Graph Explorer page (embedded in the binary)
   src/bin/demo-subscriber.rs   spec-conformant demo WebSub subscriber
   sample_data.ttl          demo seed
   shapes.ttl               demo SHACL shapes (agent manifest)
+examples/agent/            runnable tutorial agent (Together AI + MCP)
+bench/                     latency harness (load / read / fanout / crash)
+scripts/e2e.sh             end-to-end battery (17 checks, CI-gated)
 Dockerfile                 multi-stage build (service + demo subscriber)
-docker-compose.yml         oxigraph + service (+ demo profile)
-.github/workflows/ci.yml   build + unit tests
-docs/                      architecture, api, scaling, WebSub spec
+docker-compose.yml         oxigraph + service (+ demo + scale profiles)
+.github/workflows/ci.yml   build + unit tests + clippy + e2e
+docs/                      architecture, api, guides, WebSub spec
 ```
 
 ## Quickstart
@@ -88,9 +96,10 @@ cargo run -p semweb
 #      SEMWEB_PUBLIC_URL, SEMWEB_SEED_PATH, SEMWEB_SHACL_PATH,
 #      SEMWEB_QUEUE_CAPACITY, SEMWEB_DELIVERY_WORKERS,
 #      SEMWEB_WRITE_TOKEN, SEMWEB_HUB_TOKEN, SEMWEB_SECRET_KEY,
+#      SEMWEB_TERM_ALIASES, SEMWEB_EXTRA_PREFIXES,
 #      SEMWEB_REPLICA_COUNT/INDEX, SEMWEB_SUBS_REFRESH_SECS,
 #      SEMWEB_COUNTER_REFRESH_SECS, SEMWEB_REQUIRE_HTTPS_CALLBACKS,
-#      SEMWEB_CALLBACK_ALLOWLIST, SEMWEB_EXTRA_PREFIXES
+#      SEMWEB_CALLBACK_ALLOWLIST, SEMWEB_OPEN_HUB, SEMWEB_HUB_URLS
 ```
 
 ### Watch the real-time loop
@@ -135,5 +144,7 @@ headers, authenticated distribution) with durable subscriptions,
 AES-GCM-encrypted secrets, a crash-safe delivery log, multi-replica
 sharding, a bounded delivery queue with worker pool, rate limiting,
 bearer auth, Prometheus metrics, the agent manifest (with SHACL shapes
-and MCP delivery), SSE for live sessions, and named-graph tenancy.
+and SHACL constraints), full MCP delivery (tools + resources + prompts),
+SSE for live sessions, federation (open hub + external hub notify), the
+Graph Explorer UI, and named-graph tenancy.
 Remaining operational concerns: [docs/scaling.md](docs/scaling.md).

@@ -1,6 +1,6 @@
 # Agent tutorial: Together AI + MCP
 
-A complete, runnable tutorial (~200 lines of Python). The agent answers
+A complete, runnable tutorial (~270 lines of Python). The agent answers
 questions from the graph with **Together AI** doing the reasoning and the
 semantic-web **MCP server** providing every tool. Full source:
 [`examples/agent/agent.py`](https://github.com/fab679/semantic-web/blob/master/examples/agent/agent.py).
@@ -77,9 +77,10 @@ Before the loop, the agent reads the manifest (via the MCP *resource*,
 not a hardcoded endpoint) and builds the system prompt:
 
 ```python
+sample_rows = mcp.call_tool("search_graph", {"limit": 8})   # real data to copy URIs from
 manifest = mcp.read_manifest_resource()
 guidance = mcp.get_prompt("explore_graph", {"focus": "the user's question"})
-system = make_system_prompt(manifest, guidance)
+system = make_system_prompt(manifest, sample_rows, guidance)
 ```
 
 The manifest is what makes the LLM reliable: it names every term, explains
@@ -116,6 +117,8 @@ for _ in range(8):  # bounded
     messages.append(choice.message)
     for tc in choice.message.tool_calls:
         args = json.loads(tc.function.arguments)
+        if tc.function.name == "insert_triple" and WRITE_TOKEN and "token" not in args:
+            args["token"] = WRITE_TOKEN      # attach the write credential
         result = mcp.call_tool(tc.function.name, args)
         messages.append({"role": "tool", "tool_call_id": tc.id,
                          "content": result[:4000]})
@@ -145,6 +148,13 @@ Acme Corp, is a person, knows Bob, and her name is Alice. Bob works for
 Acme Corp, is a person, knows Carol, and his name is Bob.
 ```
 
+Environment the agent reads: `SEMWEB_URL` (default
+`http://localhost:8484`), `SEMWEB_MODEL` (default
+`meta-llama/Llama-3.3-70B-Instruct-Turbo`), `SEMWEB_WRITE_TOKEN`
+(attached to `insert_triple` calls), `SEMWEB_SUBSCRIBE=1` (background
+SSE listener). It also loads a `.env` from the working directory or repo
+root if one exists.
+
 Watch the graph change live while the agent works:
 
 ```sh
@@ -156,8 +166,8 @@ SEMWEB_SUBSCRIBE=1 python agent.py "What classes exist?"
 
 - **Write path**: give the agent `SEMWEB_WRITE_TOKEN` and it can
   `insert_triple` — the agent attaches the token to those tool calls
-  automatically (`agent.py` does this when the env var is set), and the
-  server rejects writes that present no valid token.
+  automatically, and the server rejects writes that present no valid
+  token.
 - **Real-time**: `SEMWEB_SUBSCRIBE=1` runs a background SSE listener;
   or call the `subscribe` tool to register a callback for durable push.
 - **Multi-graph**: point `SEMWEB_URL` at replicas; or use the `graph`

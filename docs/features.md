@@ -70,10 +70,11 @@ covered in depth on its guide page; this page is the full map.
 
 | Capability | Tools / resources / prompts |
 |---|---|
-| **tools** | `search_graph`, `sparql_query`, `get_manifest`, `get_topic`, `insert_triple`, `subscribe` — JSON-Schema inputs, bounded outputs |
+| **tools** | `search_graph`, `sparql_query`, `get_manifest`, `get_topic`, `insert_triple`, `subscribe` — JSON-Schema inputs, bounded outputs (8k-char cap, `_truncated` flag) |
 | **resources** | the live agent manifest at `manifest://semantic-web/current` |
 | **prompts** | `explore_graph`, `answer_from_graph` — guided method templates |
-| transport | JSON-RPC 2.0 over POST (streamable-HTTP style, single-JSON responses) |
+| transport | JSON-RPC 2.0 over POST (streamable-HTTP style, single-JSON responses), protocol `2025-06-18` |
+| teaching hints | `sparql_query` appends a URI-casing hint on empty results (empty usually means a mistyped URI, not absence of data) |
 
 See [For agents](for-agents.md) and the [agent tutorial](agent-tutorial.md).
 

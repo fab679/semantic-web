@@ -53,11 +53,12 @@ crash/retry windows — make consumer handling idempotent.
 |---|---|
 | Store down | `/health` reports `degraded`, reads 5xx; seed loads retry with backoff at startup |
 | Subscriber down | retries 1s/5s/15s, then the notification is dropped from the log; **subscription survives until lease end**; the next update retries delivery (spec §7) |
-| Service crashed mid-delivery | delivery-log entry's claim expires → any replica redelivers on its scan (at-least-once) |
+| Service crashed mid-delivery | delivery-log entry's claim expires (~90s) → any replica redelivers on its scan (at-least-once) |
 | Queue full | entry stays in the durable log (redelivered later), loud log + `semweb_queue_dropped_total` |
 | Callback returns 410 | subscription terminated |
-| Subscriber secret lost (no key configured) | subscription survives, delivery unsigned until renewal; set `SEMWEB_SECRET_KEY` to encrypt at rest |
+| Subscriber secret undecryptable (key changed/missing) | subscription survives, delivery unsigned until renewal; set `SEMWEB_SECRET_KEY` (64 hex chars) to encrypt at rest |
 | Out-of-band SPARQL writes | counters drift until refresh; the agent manifest never inherits drift (live GROUP BY) |
+| Delivery worker panics | panic is contained per delivery; the worker survives (spec §7) and the retry counter increments |
 
 ## Security posture
 
@@ -94,7 +95,9 @@ between service and store (rides a mesh/sidecar).
 docker compose up --build -d                       # single replica
 docker compose --profile demo up -d                # + demo subscriber
 SEMWEB_REPLICA_COUNT=2 docker compose --profile scale up -d   # 2-shard cluster
-./scripts/e2e.sh                                   # full battery, exit code = verdict
+./scripts/e2e.sh                                   # full battery (17 checks), exit code = verdict
+cargo test                                         # 24 unit tests
+uv run --project bench bench.py read               # latency harness (bench/)
 ```
 
 One binary, one store, no queue infrastructure, no schema registry.

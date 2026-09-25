@@ -1,7 +1,8 @@
 # Real-time push (WebSub guide)
 
-The graph pushes instead of making you poll. This guide covers the
-practical parts; the normative reference is the
+The graph pushes instead of making you poll. This guide is the
+practical walkthrough: what a subscriber is, how to become one, and how
+to verify the pushes you receive. The normative reference is the
 [W3C WebSub Recommendation](WebSub.md) this hub implements.
 
 ## The roles
@@ -49,7 +50,44 @@ What happens next (all per the spec):
 5. Leases expire (never perpetual): re-request before
    `hub.lease_seconds` elapses — the same `subscribe` call renews.
 
-## Subscriber checklist (spec §8.2)
+### What your callback must implement
+
+Two handlers, nothing else. Here is the complete logic, in
+framework-agnostic pseudocode and as a minimal Flask example:
+
+```
+GET  /callback   → echo back the hub.challenge query param with status 200
+POST /callback   → verify X-Hub-Signature, then do your work, then answer 200
+```
+
+```python
+import hashlib, hmac
+from flask import Flask, request
+
+app = Flask(__name__)
+SECRET = b"my-hmac-secret"
+
+@app.get("/webhook/graph")
+def verify():                      # WebSub §5.3 intent verification
+    return request.args.get("hub.challenge", ""), 200
+
+@app.post("/webhook/graph")
+def deliver():                     # WebSub §7 content distribution
+    provided = request.headers.get("X-Hub-Signature", "")
+    expected = "sha256=" + hmac.new(SECRET, request.get_data(),
+                                    hashlib.sha256).hexdigest()
+    if hmac.compare_digest(provided, expected):
+        process(request.get_data())   # your logic; treat as idempotent
+    # Always 2xx (even on a bad signature): the ack stops retries;
+    # invalid payloads are discarded locally (spec §7.1.2).
+    return "", 200
+```
+
+The response body of the delivery POST is ignored — only the status
+code is the ack. Returning `410 Gone` instead terminates the
+subscription.
+
+## Subscriber checklist
 
 - Use an **unguessable callback URL** (a capability URL) and HTTPS when
   registering secrets.
@@ -57,6 +95,13 @@ What happens next (all per the spec):
   your secret; discard mismatches locally (still 2xx).
 - Treat notifications as hints: the body is the full topic content, so
   reprocessing is idempotent.
+- Renew before the lease ends: the same `subscribe` call extends it.
+- Expect at-least-once delivery: a duplicate is possible across a
+  crash/retry window; make handling idempotent.
+
+The binary shipped in `crates/semweb/src/bin/demo-subscriber.rs`
+implements all of this (~190 lines of Rust) — use it as the reference
+consumer, or run it in the demo stack (`docker compose --profile demo`).
 
 ## Two transports, one bus
 
@@ -88,4 +133,6 @@ the stream tiny.
 docker compose --profile demo up -d demo-subscriber
 # subscribe (above), then insert something, then:
 docker compose logs -f demo-subscriber
+# intent verification: mode=subscribe, topic=…
+# content distribution received; signature verified (sha256)
 ```

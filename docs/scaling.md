@@ -54,7 +54,7 @@ delivery).
 | Live sessions | SSE `/events` (header-only events + keepalives + Lagged resync signal), complementary to WebSub |
 | Callback policies | Optional HTTPS-callback requirement for secret'd subscriptions; optional callback-host allowlist (§5.1) |
 | Hub auth | `SEMWEB_HUB_TOKEN` bearer on POST /hub; `SEMWEB_WRITE_TOKEN` bearer on the write path |
-| MCP delivery | POST /mcp: minimal MCP resource server (initialize/resources/list/resources/read) serving the live manifest |
+| MCP delivery | POST /mcp: full MCP server (initialize / resources / tools / prompts — 6 graph tools, the manifest resource, 2 guided prompts) |
 | SHACL in manifest | Shapes loaded from `SEMWEB_SHACL_PATH` into a shapes graph; per-class property shapes (path/min/max/datatype) in the manifest |
 | Abuse control | Per-callback token bucket on subscription requests (429 + metric); §8.2 challenge restrictions; `hub.secret` length enforcement |
 | Auth | `SEMWEB_WRITE_TOKEN` bearer auth on mutating endpoints; read endpoints open |

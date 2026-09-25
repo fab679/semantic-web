@@ -5,7 +5,8 @@ is the evidence log: each claim, the exact command, and the observed
 output (captured live; commands are reproducible — run them yourself).
 
 Stack under test: `docker compose --profile demo up -d` (service :8484,
-Oxigraph :7878), demo write token, `SEMWEB_OPEN_HUB=1`.
+Oxigraph :7878), demo write token, demo term aliases
+(`name`, `knows`, `employer`, `employs`, `founded`), `SEMWEB_OPEN_HUB=1`.
 
 ## 1. "Friendly names, zero compromise"
 

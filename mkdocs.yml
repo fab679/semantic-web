@@ -29,6 +29,7 @@ theme:
 nav:
   - Start:
       - Why this exists: index.md
+      - Concepts in plain language: concepts.md
       - Quickstart: getting-started.md
   - For developers:
       - Reading the graph: for-developers.md

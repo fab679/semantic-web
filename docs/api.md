@@ -1,12 +1,22 @@
-# API Reference
+# API reference
 
-All endpoints are plain HTTP over the standard interfaces the
-architecture is built on (REST verbs, form-encoded WebSub requests,
-NDJSON streaming, JSON-LD). No authentication yet — see scaling.md for
-the hardening roadmap.
+Every endpoint of the service, with methods, parameters, auth rules and
+real request/response examples. All examples run against the demo stack
+(`docker compose up`, service at `http://localhost:8484`, seed graph
+loaded). Values that vary per run (event ids, cursors, fingerprints,
+latencies) are shown truncated.
 
-Base URL: `http://localhost:8484` (docker compose) unless
-`SEMWEB_PUBLIC_URL` changes it.
+Plain HTTP only: REST verbs, query params, form-encoded WebSub requests,
+NDJSON streaming, JSON-LD, SSE. No SDK, no custom media types.
+
+**Authentication at a glance**
+
+| Endpoint(s) | Auth |
+|---|---|
+| All reads (`/`, `/context.jsonld`, `/fragments`, `/sparql`, `/manifest`, `/events`, `/health`, `/metrics`, `/ui`, `GET /hub`, `GET /topics/*`) | open |
+| `POST /admin/insert` | `Authorization: Bearer <SEMWEB_WRITE_TOKEN>` when that env var is set (demo compose sets `demo-write-token`) |
+| `POST /hub` | `Authorization: Bearer <SEMWEB_HUB_TOKEN>` when that env var is set |
+| `POST /mcp` | open; MCP `insert_triple` validates the write token inside the tool call |
 
 ## Endpoints
 
@@ -16,15 +26,16 @@ Base URL: `http://localhost:8484` (docker compose) unless
 | GET | `/context.jsonld` | JSON-LD `@context`, generated live from namespaces in use |
 | GET | `/fragments` | Triple Pattern Fragment, streamed as NDJSON-LD, cursor or offset pagination |
 | GET | `/sparql` | Read-only SPARQL 1.1 Protocol passthrough (the execution plane) |
-| GET | `/manifest` | Agent manifest: schema fingerprint, cardinalities, descriptions, example SPARQL |
-| GET | `/events` | SSE change feed for live agent sessions (complement to WebSub) |
-| POST | `/mcp` | Minimal MCP resource server (initialize, resources/list, resources/read) |
+| GET | `/manifest` | Agent manifest: schema fingerprint, cardinalities, descriptions, shapes, examples |
+| GET | `/ui` | Graph Explorer (single-page browser UI over the same endpoints) |
+| GET | `/events` | SSE change feed for live sessions (complement to WebSub) |
+| POST | `/mcp` | MCP server: tools, resources and prompts over JSON-RPC 2.0 |
 | GET | `/health` | Liveness + store reachability |
 | GET | `/metrics` | Prometheus text exposition of hub/service counters |
-| POST | `/hub` | WebSub subscribe / unsubscribe / publish (docs/WebSub.md §5, §6) |
+| POST | `/hub` | WebSub subscribe / unsubscribe / publish |
 | GET | `/hub` | Topic list + active subscription counts (convenience, not in the spec) |
-| GET | `/topics/{data\|schema}` | Topic content + discovery Link headers (§4) |
-| POST | `/admin/insert` | Write path (optionally token-gated): one triple, counter updates, topic publishes |
+| GET | `/topics/{name}` | Topic content + discovery Link headers |
+| POST | `/admin/insert` | Write path (token-gated): one triple, counter updates, topic publishes |
 
 ---
 
@@ -44,51 +55,55 @@ curl -i http://localhost:8484/
   "generatedFrom": "live store state (not a cached build)",
   "storeMode": "sparql-rust",
   "classes": ["foaf:Organization", "foaf:Person"],
-  "predicates": ["schema:employee", "schema:foundingDate", "schema:worksFor",
-                 "rdf:type", "foaf:knows", "foaf:name"],
+  "predicates": ["employs", "founded", "employer", "rdf:type",
+                 "rdfs:comment", "skos:definition", "knows", "name"],
   "controls": {
-    "fragments": "/fragments{?subject,predicate,object}",
+    "fragments": "/fragments{?subject,predicate,object,after,limit,offset,graph}",
+    "sparql": "/sparql{?query}",
+    "manifest": "/manifest",
+    "mcp": "/mcp",
+    "events": "/events{?topic}",
     "hub": "/hub",
     "topics": ["/topics/data", "/topics/schema"]
   }
 }
 ```
 
-Class/predicate URIs are compacted through the namespace prefix table
-(standards vocabularies → `prefix:local` CURIEs; unknown namespaces
-stay full URIs). Adding a term from a known vocabulary requires no code
-change; a new namespace gets a prefix via `SEMWEB_EXTRA_PREFIXES`/
-`SEMWEB_EXTRA_PREFIXES` at runtime.
-
----
+Class/predicate names are compacted through the namespace prefix table
+(standards vocabularies → `prefix:local` CURIEs; configured term aliases
+→ bare names; unknown namespaces stay full URIs). With the demo stack's
+`SEMWEB_TERM_ALIASES`, `schema:worksFor` appears as `employer` etc. —
+adding a term from a known vocabulary requires no code change; a new
+namespace gets a prefix via `SEMWEB_EXTRA_PREFIXES` at runtime.
 
 ## `GET /context.jsonld`
 
-The JSON-LD `@context`, generated live from the namespaces currently
-in use in the store:
+The JSON-LD `@context`, generated live from the namespaces currently in
+use in the store, plus term aliases as JSON-LD term definitions:
 
 ```json
 {
   "@context": {
     "type": "@type",
-    "schema": "http://schema.org/",
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "schema": "http://schema.org/",
+    "skos": "http://www.w3.org/2004/02/skos/core#",
     "foaf": "http://xmlns.com/foaf/0.1/",
     "name": {"@id": "http://xmlns.com/foaf/0.1/name"},
-    "employer": {"@id": "http://schema.org/worksFor"}
+    "knows": {"@id": "http://xmlns.com/foaf/0.1/knows"},
+    "employer": {"@id": "http://schema.org/worksFor"},
+    "employs": {"@id": "http://schema.org/employee"},
+    "founded": {"@id": "http://schema.org/foundingDate"}
   }
 }
 ```
 
-Term aliases (JSON-LD term definitions) come from `SEMWEB_TERM_ALIASES`
-— they compact matching URIs to bare names in output *and* round-trip
-for JSON-LD processors.
-
-Only registered prefixes are emitted. Namespaces without a registered
-prefix appear as full URIs in the data — the context need not (and
-cannot honestly) name them.
-
----
+Prefixes/aliases come from the standard table plus
+`SEMWEB_EXTRA_PREFIXES` / `SEMWEB_TERM_ALIASES`. Only registered
+prefixes are emitted; namespaces without a registered prefix appear as
+full URIs in the data — the context need not (and cannot honestly) name
+them.
 
 ## `GET /fragments`
 
@@ -101,7 +116,7 @@ omitted positions are wildcards).
 | `predicate` | URI to match on predicate |
 | `object` | URI (auto-detected via `http(s)://` prefix) or plain literal |
 | `graph` | Optional named graph (multi-tenancy: tenants map to graphs); absent = default graph |
-| `after` | Opaque cursor from a previous page's control line — production pagination, O(1) seek |
+| `after` | Opaque cursor from a previous page's control line — O(1) seek pagination |
 | `limit` | Page size, default 100, max 1000 |
 | `offset` | Legacy skip count (cursor pagination is preferred; results are deterministic either way — ordered by the string forms of s, p, o) |
 
@@ -115,15 +130,17 @@ Response: `application/x-ndjson`, streamed, one compacted JSON-LD
 statement per line:
 
 ```json
-{"@id": "http://example.org/alice", "schema:worksFor": {"@id": "http://example.org/acme"}}
-{"@id": "http://example.org/bob", "schema:worksFor": {"@id": "http://example.org/acme"}}
+{"@id": "http://example.org/alice", "employer": {"@id": "http://example.org/acme"}}
+{"@id": "http://example.org/bob", "employer": {"@id": "http://example.org/acme"}}
 ```
 
 - `rdf:type` compacts to `@type`:
   `{"@id": "http://example.org/alice", "@type": "foaf:Person"}`
 - Typed literals keep their datatype; language tags survive:
-  `{"@id": "http://example.org/acme", "schema:foundingDate": {"@value": "2001-04-03", "@type": "xsd:date"}}`
-with, when the page is truncated, both continuation mechanisms:
+  `{"@id": "http://example.org/acme", "founded": {"@value": "2001-04-03", "@type": "xsd:date"}}`
+
+When the page is truncated, the final line is the hypermedia control
+carrying both continuation mechanisms:
 
 ```json
 {"@control": "metadata", "count_estimate": 20,
@@ -132,11 +149,11 @@ with, when the page is truncated, both continuation mechanisms:
 ```
 
 Follow `after` for cursor pagination (O(1) seek, production path);
-`next` remains for offset-based clients. `count_estimate` comes from
-the maintained cardinality counters when they cover the pattern, else
-an exact server COUNT.
-
----
+`next` remains for offset-based clients. `count_estimate` comes from the
+maintained cardinality counters when they cover the pattern (whole
+graph, single-predicate, or single-subject patterns), else from an exact
+server COUNT; with `after` or `graph` present it is always an exact
+COUNT.
 
 ## `GET /sparql?query=...`
 
@@ -151,8 +168,7 @@ curl "http://localhost:8484/sparql?query=SELECT%20%3Fs%20%3Fname%20WHERE%20%7B%2
 ```
 
 Response: the store's SPARQL JSON results, content-type preserved.
-
----
+Missing/empty `query` → `400`.
 
 ## `GET /manifest`
 
@@ -163,6 +179,7 @@ regenerated live on every request:
 {
   "@context": "/context.jsonld",
   "kind": "agent-manifest",
+  "generatedFrom": "live store state (not a cached build)",
   "schemaFingerprint": "sha256:9beb...",
   "prefixes": [["foaf", "http://xmlns.com/foaf/0.1/"], ["schema", "http://schema.org/"]],
   "classes": [
@@ -171,21 +188,30 @@ regenerated live on every request:
       "compact": "foaf:Person",
       "instances": 3,
       "description": "A person as described by the FOAF vocabulary.",
+      "shapes": [
+        {"path": "http://xmlns.com/foaf/0.1/name", "minCount": 1,
+         "maxCount": 1, "datatype": "http://www.w3.org/2001/XMLSchema#string"},
+        {"path": "http://xmlns.com/foaf/0.1/knows", "maxCount": 5}
+      ],
       "exampleQuery": "SELECT ?s WHERE { ?s a <http://xmlns.com/foaf/0.1/Person> } LIMIT 10"
     }
   ],
   "predicates": [
-    {"uri": "http://xmlns.com/foaf/0.1/name", "compact": "foaf:name",
-     "triples": 6, "description": null}
+    {"uri": "http://xmlns.com/foaf/0.1/name", "compact": "name", "triples": 5,
+     "description": null}
   ],
   "topics": ["/topics/data", "/topics/schema"],
   "controls": {"fragments": "...", "sparql": "/sparql{?query}", "hub": "/hub"}
 }
 ```
 
+Field by field:
+
 - `schemaFingerprint` — sha256 over the sorted class+predicate URI set;
   also carried on `/topics/schema` content, so consumers detect missed
   schema-change events and diff safely.
+- `prefixes` — the PREFIX declarations agents should copy to the top of
+  SPARQL queries, derived from the namespaces currently in use.
 - `instances` / `triples` — live GROUP BY counts, never counter drift.
 - `description` — from `rdfs:comment` / `skos:definition` in the graph
   (null when absent). The grounding text agents plan against.
@@ -194,19 +220,25 @@ regenerated live on every request:
   configured. Declared constraints agents can plan against.
 - `exampleQuery` — executable at `/sparql`.
 
----
+## `GET /ui`
+
+The Semantic Graph Explorer: one embedded HTML page (no build tooling,
+no extra backend) that builds itself from `/manifest`, searches via
+`/fragments`, previews topics, subscribes to `/events` via EventSource,
+and shows `/health` + `/metrics`. A lens on the graph, not an admin
+panel.
 
 ## `GET /events` (SSE)
 
 Live change feed for open agent sessions — the complementary channel to
 WebSub (durable subscribers can be offline; SSE sessions are live
 streams). Server-Sent Events over a long-lived GET; `?topic=/topics/data`
-filters.
+filters (an unknown topic → `400`).
 
 Each event carries the notification header only; clients refetch
 `GET /topics/{name}` for content, keeping the stream small regardless
-of topic size. Keepalive comments flow every 15s; a `Lagged` event
-tells the client it missed events and should resync.
+of topic size. Keepalive comments flow every 15s; a `Lagged` event tells
+the client it missed events and should resync.
 
 ```sh
 curl -N "http://localhost:8484/events?topic=/topics/data"
@@ -215,30 +247,57 @@ curl -N "http://localhost:8484/events?topic=/topics/data"
 ```text
 data: {"topic":"/topics/data","event_id":"9c7c27ac8ef141dc"}
 
-```
+: keepalive
 
----
+data: {"error":"lagged","missed":"3"}
+```
 
 ## `POST /mcp`
 
-A minimal MCP (Model Context Protocol) resource server so MCP-aware
-agents discover and read the manifest exactly the way they list tools:
-JSON-RPC 2.0 over POST, single-JSON responses.
+A full [MCP](https://modelcontextprotocol.io) server (Model Context
+Protocol): JSON-RPC 2.0 over POST, single-JSON responses. Protocol
+version `2025-06-18`. Three capability groups:
+
+**Tools** (`tools/list`, `tools/call`):
+
+| Tool | Input | What it does |
+|---|---|---|
+| `search_graph` | `subject`, `predicate`, `object`, `graph`, `limit` (default 20, results capped at 200 lines) | TPF fragment lookup; omitted positions are wildcards. Returns compacted JSON-LD lines + `[count_estimate, has_more]` |
+| `sparql_query` | `query` (required) | Read-only SPARQL; appends a "0 results → check URI casing" hint on empty results |
+| `get_manifest` | — | The live agent manifest (same document as `GET /manifest`) |
+| `get_topic` | `topic` (`/topics/data` or `/topics/schema`) | Full topic content |
+| `insert_triple` | `subject`, `predicate`, `object`, `graph`, `token` | Write path; honours `SEMWEB_WRITE_TOKEN` (pass it as the `token` argument when the deployment gates writes) |
+| `subscribe` | `topic`, `callback`, `secret`, `lease_seconds` | WebSub subscription on behalf of a callback URL (the callback must implement the subscriber contract) |
+
+Tool text is capped at 8,000 characters (`_truncated: true` marks a cut)
+so an LLM caller never receives unbounded payloads. `sparql_query`
+teaches instead of returning bare empty results — an empty result is
+usually a mistyped (case-sensitive) URI, not absence of data.
+
+**Resources** (`resources/list`, `resources/read`): the live agent
+manifest at `manifest://semantic-web/current`.
+
+**Prompts** (`prompts/list`, `prompts/get`): `explore_graph`
+(optional `focus`) and `answer_from_graph` (required `question`) —
+guided method templates.
 
 ```sh
 curl -X POST http://localhost:8484/mcp -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 curl -X POST http://localhost:8484/mcp -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}'
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 curl -X POST http://localhost:8484/mcp -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"manifest://semantic-web/current"}}'
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call",
+       "params":{"name":"search_graph",
+                 "arguments":{"predicate":"http://schema.org/worksFor"}}}'
+curl -X POST http://localhost:8484/mcp -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":4,"method":"resources/read",
+       "params":{"uri":"manifest://semantic-web/current"}}'
 ```
 
-`resources/read` returns the live agent manifest (the same document as
-`GET /manifest`) as an MCP content item. Resources-only scope: no
-prompts/tools, no SSE transport.
-
----
+Also handled: `ping` → `{}`, `prompts/get`, and notifications
+(`notifications/initialized`, `notifications/cancelled`) → `202` with no
+body.
 
 ## `GET /health`
 
@@ -248,36 +307,36 @@ Liveness + store readiness (the docker healthcheck target):
 {"status": "ok", "store": "reachable"}
 ```
 
----
+`degraded` / `unreachable` when the store does not answer an `ASK {}`.
 
 ## `GET /metrics`
 
-Prometheus text exposition: WebSub verification outcomes, deliveries
-(success/exhausted), retries, 410 terminations, denied notifications,
-queue drops, rate-limit hits, active subscriptions, fragment requests
-and inserts.
-
-```sh
-curl http://localhost:8484/metrics
-```
+Prometheus text exposition. Counters:
 
 ```text
-# TYPE semweb_deliveries_total counter
-semweb_deliveries_total{result="success"} 3
-...
+semweb_verifications_total{result="ok"|"failed"}   # §5.3 intent verifications
+semweb_deliveries_total{result="success"|"exhausted"}
+semweb_delivery_retries_total
+semweb_terminations_410_total
+semweb_denied_total
+semweb_queue_dropped_total
+semweb_rate_limited_total
+semweb_redelivered_on_restart_total
+semweb_routed_to_other_replica_total
+semweb_subscriptions_active                        # gauge
+semweb_fragments_requests_total
+semweb_inserts_total
 ```
-
----
 
 ## `POST /hub`
 
-WebSub subscription request — form-encoded per docs/WebSub.md §5.1.
+WebSub subscription request — form-encoded per the WebSub spec §5.1.
 Unknown additional parameters are ignored, as the spec requires.
 
 | Param | Meaning |
 |---|---|
 | `hub.mode` | `subscribe`, `unsubscribe`, or `publish` |
-| `hub.topic` | Topic URL; MUST be the rel=self URL from discovery |
+| `hub.topic` | Topic URL; MUST be the rel=self URL from discovery (the bare `/topics/data` path also works) |
 | `hub.callback` | Subscriber callback URL (query string is preserved, §5.1.1) |
 | `hub.lease_seconds` | Optional requested lease; hub clamps to [60s, 10 days], default 1 day (§5.3: expirations are mandatory, never perpetual) |
 | `hub.secret` | Optional HMAC secret, MUST be < 200 bytes (§5.1) |
@@ -312,7 +371,7 @@ Responses:
 - `202 Accepted` — received; verification starts asynchronously and the
   response MUST NOT depend on its outcome (§5.1.2).
 - `4xx` with a plain-text body — validation errors (unknown topic,
-  missing parameters, secret ≥ 200 bytes).
+  missing parameters, secret ≥ 200 bytes, policy rejection).
 
 ### Verification handshake (§5.3)
 
@@ -356,9 +415,22 @@ curl -X POST http://localhost:8484/hub \
 ```
 
 The hub rebuilds the topic content at publish time and fans out.
-Unknown `hub.url`s are rejected with 400.
+Unknown `hub.url`s are rejected with 400 — except third-party topics
+when `SEMWEB_OPEN_HUB=1` (the [federation](federation.md) feature).
 
----
+## `GET /hub`
+
+Convenience for humans/agents poking at the API before subscribing
+(not part of the spec): the topic list and active subscription counts.
+
+```sh
+curl http://localhost:8484/hub
+```
+
+```json
+{"topics": ["/topics/data", "/topics/schema"],
+ "subscriptions": {"/topics/data": 1, "/topics/schema": 0}}
+```
 
 ## `GET /topics/{name}`
 
@@ -378,11 +450,14 @@ content-type: application/x-ndjson
 link: <http://localhost:8484/topics/data>; rel="self", <http://localhost:8484/hub>; rel="hub"
 
 {"@id":"http://example.org/alice","@type":"foaf:Person"}
-{"@id":"http://example.org/alice","foaf:name":"Alice"}
+{"@id":"http://example.org/alice","name":"Alice"}
 ...
 ```
 
----
+Only canonical topics are served here; third-party topics (open-hub
+policy) live at the publisher's own URL and are fetched at publish
+time. `/topics/schema` content carries the same `schemaFingerprint` as
+the manifest.
 
 ## `POST /admin/insert`
 
@@ -400,13 +475,14 @@ curl -X POST http://localhost:8484/admin/insert \
   -d '{"subject":"http://example.org/carol","predicate":"http://xmlns.com/foaf/0.1/knows","object":"http://example.org/alice"}'
 ```
 
-The body accepts an optional `"graph"` for tenant isolation (absent =
-default graph).
+Body: `subject`, `predicate`, `object` (required; `object` becomes a
+URI when it starts with `http(s)://`, else a plain literal) and an
+optional `"graph"` for tenant isolation (absent = default graph).
 
 ```json
 {
   "event_id": "440b3df8889a033b",
-  "inserted": {"@id": "http://example.org/carol", "foaf:knows": {"@id": "http://example.org/alice"}},
+  "inserted": {"@id": "http://example.org/carol", "knows": {"@id": "http://example.org/alice"}},
   "data_subscribers_notified": 1,
   "schema_changed": false,
   "schema_subscribers_notified": 0
@@ -423,14 +499,13 @@ default graph).
   for active (unexpired) subscribers; workers perform the actual POSTs
   asynchronously with the spec's retry contract.
 
----
-
 ## Error responses
 
 Errors are plain text (per §5.1.2, "to assist the client developer in
 understanding the error"):
 
-- `400` — missing/invalid hub parameters, unknown publish target
+- `400` — missing/invalid hub parameters, unknown publish target,
+  missing `?query=` on `/sparql`, unknown `?topic=` filter on `/events`
 - `401` — write path (or `/hub`, when SEMWEB_HUB_TOKEN is set) called without the configured bearer token
 - `404` — unknown topic or `hub.topic` not resolvable to a topic
 - `429` — subscription rate limit exceeded for this callback

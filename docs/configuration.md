@@ -1,7 +1,8 @@
 # Configuration reference
 
 Everything is configured through environment variables — no config
-files, no recompiles. Defaults in parentheses.
+files, no recompiles. Defaults in parentheses. The demo compose stack
+sets several of these; its choices are listed at the bottom.
 
 ## Store
 
@@ -9,14 +10,17 @@ files, no recompiles. Defaults in parentheses.
 |---|---|---|
 | `SEMWEB_SPARQL_ENDPOINT` | `http://localhost:7878/query` | read endpoint (SPARQL 1.1 Protocol). Point at a load-balanced replica set for read scaling |
 | `SEMWEB_SPARQL_UPDATE` | `http://localhost:7878/update` | write endpoint (separate on purpose — the `/sparql` passthrough can never write) |
-| `SEMWEB_SEED_PATH` | unset | Turtle file loaded into the default graph at startup (retried while the store boots; idempotent) |
-| `SEMWEB_SHACL_PATH` | unset | SHACL shapes file loaded into the shapes graph, surfaced by `GET /manifest` and MCP |
+| `SEMWEB_SEED_PATH` | unset | Turtle file loaded into the default graph at startup (retried while the store boots; idempotent — RDF is set semantics) |
+| `SEMWEB_SHACL_PATH` | unset | SHACL shapes file, loaded (clear-then-load) into a dedicated shapes graph, surfaced by `GET /manifest` and MCP |
+
+The Graph Store Protocol endpoint used for seeding is derived as the
+sibling `/store` of the update URL.
 
 ## Service
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SEMWEB_PORT` | `8484` | listen port (local runs). The project uses dedicated ports so it never conflicts with anything else on a machine: service **8484**, Oxigraph **7878**, scale replica 2 **8485** |
+| `SEMWEB_PORT` | `8484` (`cargo run`); `8000` inside the docker container | listen port. Ports are dedicated so the project never conflicts with anything else: service **8484**, Oxigraph **7878**, scale replica 2 **8485** (docker maps host 8484/8485 → container 8000) |
 | `SEMWEB_PUBLIC_URL` | `http://localhost:$PORT` | absolute base used for WebSub discovery (`rel=self` / `rel=hub`) Link headers |
 | `RUST_LOG` | `info` | tracing filter (`debug` for delivery/verification detail) |
 
@@ -26,10 +30,10 @@ files, no recompiles. Defaults in parentheses.
 |---|---|---|
 | `SEMWEB_QUEUE_CAPACITY` | `4096` | bounded delivery queue; overflow entries stay in the durable log |
 | `SEMWEB_DELIVERY_WORKERS` | `8` | concurrent delivery workers |
-| `SEMWEB_SECRET_KEY` | unset (plaintext at rest) | 64-hex-char (32-byte) AES-256-GCM key; encrypts subscriber secrets in the store. Generate: `openssl rand -hex 32` |
-| `SEMWEB_REQUIRE_HTTPS_CALLBACKS` | `false` | reject `http://` callbacks that register a `hub.secret` (spec §8.2 recommends HTTPS) |
+| `SEMWEB_SECRET_KEY` | unset (plaintext at rest) | 64-hex-char (32-byte) AES-256-GCM key; encrypts subscriber secrets in the store. Generate: `openssl rand -hex 32`. Shorter values are ignored with a warning |
+| `SEMWEB_REQUIRE_HTTPS_CALLBACKS` | `false` | reject `http://` callbacks that register a `hub.secret` (spec §8.2 recommends HTTPS). Accepts `1`/`true` |
 | `SEMWEB_CALLBACK_ALLOWLIST` | empty (allow all) | comma-separated callback host suffixes, e.g. `mysvc.example.com,api.example.org` |
-| `SEMWEB_OPEN_HUB` | `false` | accept third-party topics (any publisher's URL) — the hub serves external publishers (§5.1 policy); content fetched at publish time |
+| `SEMWEB_OPEN_HUB` | `false` | accept third-party topics (any publisher's URL) — the hub serves external publishers (§5.1 policy); content fetched at publish time, capped at 16 MiB |
 | `SEMWEB_HUB_URLS` | empty (only ours) | comma-separated external hubs advertised in Link headers and notified on every mutation (§4 fault tolerance / §6) |
 
 Lease policy is hub-fixed per spec §5.3: requested leases clamped to
@@ -50,8 +54,8 @@ Read endpoints stay open in both cases.
 |---|---|---|
 | `SEMWEB_REPLICA_COUNT` | `1` | total replicas sharing one store |
 | `SEMWEB_REPLICA_INDEX` | `0` | this replica's shard index (0..COUNT-1) |
-| `SEMWEB_SUBS_REFRESH_SECS` | `10` | how often replicas poll the shared store for new subscriptions/renewals and pending deliveries in their shard |
-| `SEMWEB_COUNTER_REFRESH_SECS` | `300` | cardinality-counter refresh (bounds drift from out-of-band writers) |
+| `SEMWEB_SUBS_REFRESH_SECS` | `10` | how often replicas poll the shared store for new subscriptions/renewals and pending deliveries in their shard (minimum effective 2s) |
+| `SEMWEB_COUNTER_REFRESH_SECS` | `300` | cardinality-counter refresh (bounds drift from out-of-band writers; minimum effective 30s) |
 
 Sharding: a (topic, callback) subscription is owned by the replica
 `hash(subscription id) % COUNT == INDEX`. Publishers on any replica log
@@ -63,14 +67,33 @@ periodic scan.
 | Variable | Effect |
 |---|---|
 | `SEMWEB_EXTRA_PREFIXES` | comma-separated `name=namespace` pairs — friendly prefixes for private namespaces, e.g. `ex=http://example.org/vocab/,acme=http://acme.example/ns#` |
-| `SEMWEB_TERM_ALIASES` | comma-separated `name=URI` pairs — bare friendly names for exact URIs, emitted in `/context.jsonld` as JSON-LD term definitions (round-trippable). Demo default: `name`, `knows`, `employer`, `employs`, `founded` |
+| `SEMWEB_TERM_ALIASES` | comma-separated `name=URI` pairs — bare friendly names for exact URIs, emitted in `/context.jsonld` as JSON-LD term definitions (round-trippable) |
 
 Standard vocabularies (rdf, rdfs, owl, xsd, sh, foaf, schema, dcterms,
-skos) always compact; extras never shadow them.
+skos) always compact; extras never shadow them; term aliases win over
+prefixes for their exact URI (but never shadow a prefix *name*).
+
+## The three reserved named graphs
+
+The service stores its own durable state in the store, in named graphs
+with these URIs — don't use them for data:
+
+| Graph | Holds |
+|---|---|
+| `http://semweb.dev/graph/hub/subscriptions` | WebSub subscriptions (lease expiry as unix seconds; secrets AES-GCM-encrypted) |
+| `http://semweb.dev/graph/hub/deliveries` | durable delivery log (entries deleted on ack; crash mid-flight → redelivery) |
+| `http://semweb.dev/graph/shapes` | SHACL shapes loaded from `SEMWEB_SHACL_PATH` |
 
 ## Demo compose defaults
 
-`docker-compose.yml` sets: `SEMWEB_WRITE_TOKEN=demo-write-token`,
-`SEMWEB_SECRET_KEY=<demo key>`, `SEMWEB_SHACL_PATH=/app/shapes.ttl`.
-Change the secret key for anything real (`openssl rand -hex 32`) — it is
-the subscription-secret encryption root.
+`docker-compose.yml` sets:
+
+| Variable | Value |
+|---|---|
+| `SEMWEB_WRITE_TOKEN` | `demo-write-token` |
+| `SEMWEB_SECRET_KEY` | a fixed demo key — change it for anything real (`openssl rand -hex 32`) |
+| `SEMWEB_SHACL_PATH` | `/app/shapes.ttl` |
+| `SEMWEB_SEED_PATH` | `/app/sample_data.ttl` |
+| `SEMWEB_TERM_ALIASES` | `name=http://xmlns.com/foaf/0.1/name,knows=http://xmlns.com/foaf/0.1/knows,employer=http://schema.org/worksFor,employs=http://schema.org/employee,founded=http://schema.org/foundingDate` |
+| `SEMWEB_QUEUE_CAPACITY` / `SEMWEB_DELIVERY_WORKERS` | `4096` / `8` |
+| `SEMWEB_OPEN_HUB`, `SEMWEB_HUB_URLS`, `SEMWEB_EXTRA_PREFIXES` | passthrough from your shell (unset by default) |

@@ -46,7 +46,7 @@ semantics of the Triple Pattern Fragments specification.
   Concrete positions are `BIND`-ed so every result row carries all
   three terms regardless of which positions were wildcards (SPARQL
   engines omit variables that do not occur in the pattern — see
-  store.rs `pattern_fragment`).
+  store/fragments.rs `pattern_fragment`).
 - **Cursor pagination** (`?after=<opaque cursor>`): the cursor is the
   string form of the last-seen triple (base64 JSON), and results are
   ordered by the string forms of (s, p, o) so pages are deterministic
@@ -118,17 +118,17 @@ The full conformance map, section numbers referring to docs/WebSub.md:
 
 | Spec requirement | Implementation |
 |---|---|
-| §3.1.1.3 hub accepts hub.callback/mode/topic (+hub.secret, hub.lease_seconds) | api.rs `hub_post`, hub.rs `subscribe`/`unsubscribe` |
+| §3.1.1.3 hub accepts hub.callback/mode/topic (+hub.secret, hub.lease_seconds) | api/hub_endpoints.rs `hub_post`, hub/mod.rs `subscribe`/`unsubscribe` |
 | §5.1.2 `202` immediately; MUST NOT depend on verification outcome | verification runs in a spawned task after the response |
 | §5.3 intent verification: GET callback with hub.mode, hub.topic, hub.challenge, hub.lease_seconds | `verify_and_commit` |
 | §5.3 challenge charset (`+ - . / 0-9 = A-Z _ a-z`) and §8.2 no-binary | `generate_challenge` (URL-safe subset, 43 chars) |
 | §5.3.1 2xx + body == challenge commits; wrong body / 3xx / 4xx / 5xx leaves state unchanged | `verify_and_commit` |
 | §5.1 re-requests of active subscriptions allowed; state overridden only after verification | commit-on-success in `verify_and_commit` |
-| §5.1 hub.secret MUST be < 200 bytes | validated in hub.rs, 4xx otherwise |
+| §5.1 hub.secret MUST be < 200 bytes | validated in hub/mod.rs, 4xx otherwise |
 | §5.3 hubs MUST enforce lease expirations; MUST NOT issue perpetual leases | default 1 day, clamped to [60s, 10 days], 30s sweeper task |
 | §5.1.1 callback query string preserved, never overwritten; params travel in the URL | `append_query` |
 | §5.2 denied notifications (hub.mode=denied + hub.reason) | `send_denied` |
-| §6 publisher→hub notification (hub.mode=publish & hub.url) | api.rs publish branch |
+| §6 publisher→hub notification (hub.mode=publish & hub.url) | api/hub_endpoints.rs publish branch |
 | §7 distribution = POST of the **full** topic contents, Content-Type matching the topic, Link headers rel=self + rel=hub | `TopicContent` built at publish time; queued, delivered by workers |
 | §7.1 HMAC `X-Hub-Signature` when hub.secret supplied | sha256 (§8.3: SHA-1 ruled out, sha256 is the minimum) |
 | §7 retries up to self-imposed limits; subscription stays active until lease end; 410 Gone terminates | worker retry loop (1s/5s/15s schedule) |
@@ -185,8 +185,24 @@ the graph, regenerated live on every request:
   `/sparql`.
 
 Delivery is content, not transport: the same manifest travels as HTTP
-GET, as the `/topics/schema` WebSub payload, and (roadmap) as an MCP
-resource.
+GET, as the `/topics/schema` WebSub payload, and as an MCP resource
+(`manifest://semantic-web/current`).
+
+## 3.5 Federation (decentralized WebSub)
+
+The hub participates in all three decentralized topologies, per
+spec §4/§5.1 policy knobs:
+
+- **Self-hosted hub** (default): publisher and hub are one service;
+  scale-out via replicas + durable log.
+- **Open hub** (`SEMWEB_OPEN_HUB`): accept third-party topics — the hub
+  fetches any publisher's URL at publish time (§7 full-content rule,
+  16 MiB cap) and distributes it exactly as served.
+- **Federated instances**: any instance can subscribe to any other's
+  topics via standard Link-header discovery; `SEMWEB_HUB_URLS`
+  advertises/notifies external hubs for fault tolerance (§4).
+
+Full walkthrough: [federation.md](federation.md).
 
 ## 4. Namespace-prefix compaction (no domain terms in code)
 
@@ -202,6 +218,12 @@ Consumers should never read raw URIs. Compaction is prefix-based:
   invented names. A private namespace can be given a friendly prefix at
   runtime via `SEMWEB_EXTRA_PREFIXES`
   (`name=namespace`, comma-separated) without recompiling.
+- **Term aliases** (`SEMWEB_TERM_ALIASES=name=URI,...`) give the terms
+  consumers read most a *bare friendly name* (`foaf:name` → `name`).
+  Aliases are emitted into `/context.jsonld` as JSON-LD term
+  definitions so JSON-LD processors round-trip them; an alias wins over
+  the prefix form for its exact URI, and aliases never shadow a prefix
+  name.
 - `rdf:type` compacts to `@type` (standard JSON-LD convention).
 - Typed literals keep their datatype (`xsd:date`), language-tagged
   literals keep their tag — RDF fidelity over the wire is a
@@ -213,28 +235,28 @@ compacts output and generates the live `/context.jsonld`.
 ## 5. System overview
 
 ```
-                     ┌───────────────────────────────────────────┐
-                     │            crates/semweb (Rust)           │
-   HTTP GET /        │  ┌──────────────┐   ┌─────────────────┐   │
-  ──────────────────►│  │    api.rs    │──►│     store.rs    │   │
-   self-description  │  │  (axum HTTP) │   │  SPARQL 1.1     │   │
-                     │  └──────┬───────┘   │    Protocol     │   │
-   GET /fragments    │         │           └────────┬────────┘   │
-  ──────────────────►│  ┌──────▼───────┐            │            │
-   NDJSON-LD stream  │  │    hub.rs    │            ▼            │
-                     │  │  WebSub hub  │   ┌──────────────────┐  │
-   POST /hub         │  └──────┬───────┘   │  Oxigraph server │  │
-  ──────────────────►│         │           │  (standalone)    │  │
-   subscribe/publish │         │           └──────────────────┘  │
-                     └─────────┼─────────────────────────────────┘
-                               │ POST (full topic content,
-                               │ Link headers, HMAC-signed)
-                               ▼
-                     ┌─────────────────────┐
-                     │ subscribers (any    │
-                     │ callback URL, any   │
-                     │ app/agent)          │
-                     └─────────────────────┘
+                       ┌─────────────────────────────────────────┐
+                       │            crates/semweb (Rust)         │
+   HTTP GET /          │  ┌──────────────┐   ┌───────────────┐   │
+  ────────────────────►│  │    api/      │──►│    store/     │   │
+    GET /fragments     │  │ (axum HTTP)  │   │  SPARQL 1.1   │   │
+  ────────────────────►│  └──────┬───────┘   │   Protocol    │   │
+   NDJSON-LD stream    │         │           └───────┬───────┘   │
+  ────────────────────►│  ┌──────▼───────┐           │           │
+    POST /hub          │  │    hub/      │           ▼           │
+  ────────────────────►│  │  WebSub hub  │   ┌───────────────┐   │
+    POST /mcp          │  └──────┬───────┘   │ Oxigraph or   │   │
+  ────────────────────►│         │           │ any SPARQL 1.1│   │
+                       │         │           │ endpoint      │   │
+                       └─────────┼───────────┴───────────────┘
+                                 │ POST (full topic content,
+                                 │ Link headers, HMAC-signed)
+                                 ▼
+                       ┌─────────────────────┐
+                       │ subscribers (any    │
+                       │ callback URL, any   │
+                       │ app/agent)          │
+                       └─────────────────────┘
 ```
 
 ## 6. Components (crates/semweb/src)
@@ -258,12 +280,18 @@ lines, everything is editable in isolation.
 | `api/events.rs` | GET /events (SSE change feed for live sessions) |
 | `api/hub_endpoints.rs` | POST|GET /hub, GET /topics/{name} |
 | `api/write.rs` | POST /admin/insert (token-gated write path) |
-| `api/mcp.rs` | POST /mcp (minimal MCP resource server: initialize, resources/list, resources/read) |
+| `api/ui.rs` | GET /ui (embedded Graph Explorer page) |
+| `api/mcp/mod.rs` | POST /mcp (full MCP server: initialize, ping, tools, resources, prompts) |
+| `api/mcp/tools.rs` | The six graph tools (search_graph, sparql_query, get_manifest, get_topic, insert_triple, subscribe) |
+| `api/mcp/resources.rs` | The manifest resource (manifest://semantic-web/current) |
+| `api/mcp/prompts.rs` | Guided prompt templates (explore_graph, answer_from_graph) |
 | `api/health_metrics.rs` | GET /health, GET /metrics (Prometheus text) |
 | **hub/** | |
-| `hub/mod.rs` | Hub core: subscriptions, publish fan-out (durable log + sharding), SSE broadcast, policies, persistence reload |
+| `hub/mod.rs` | Hub core: subscriptions, fan-out orchestration, policies, metrics, SSE bus |
+| `hub/publish.rs` | Publish fan-out: durable-log + queue + SSE, external-hub notify, open-hub fetch |
 | `hub/verification.rs` | §5.3 intent verification, challenge, lease clamping, callback query preservation |
 | `hub/delivery.rs` | Worker pool + content distribution with retries, 410, §7.1 HMAC signing |
+| `hub/reload.rs` | Persistence reload: startup recovery + multi-replica refresh loop |
 | `hub/crypto.rs` | AES-256-GCM secret encryption at rest (SEMWEB_SECRET_KEY) |
 | `hub/rate_limit.rs` | Per-callback token bucket |
 | `hub/metrics.rs` | Hub counters |
@@ -286,12 +314,16 @@ lines, everything is editable in isolation.
   `SEMWEB_PUBLIC_URL` (absolute base for rel=self/rel=hub discovery
   URLs), `SEMWEB_SEED_PATH` (optional Turtle seed, loaded via the Graph
   Store Protocol with `?default` — load-bearing: a bare GSP POST to
-  oxigraph 0.5.10 lands in a server-generated named graph), and
-  `SEMWEB_EXTRA_PREFIXES` for runtime prefix
-  registration.
+  oxigraph 0.5.10 lands in a server-generated named graph),
+  `SEMWEB_SHACL_PATH` (SHACL shapes for the manifest),
+  `SEMWEB_TERM_ALIASES` (bare friendly names) and
+  `SEMWEB_EXTRA_PREFIXES` for runtime prefix registration.
 
 The WebSub demo profile adds **demo-subscriber** so the full
 publish/subscribe loop runs inside the network with no host networking.
+A `scale` profile adds a second replica (`SEMWEB_REPLICA_COUNT=2`,
+`SEMWEB_REPLICA_INDEX=1`, host port 8485) sharing the same store —
+two replicas forming one 2-shard cluster.
 
 ## 8. Roadmap
 
