@@ -531,8 +531,8 @@ function connectSSE() {
 async function loadSidebar() {
   const me = state.me.uri;
   const rows = bind(await sparql(
-    `SELECT ?u ?name WHERE { ?u a <${FOAF}Person> ; <${FOAF}name> ?name } ORDER BY ?name`));
-  state.users = new Map(rows.map((r) => [r.u.value, r.name.value]));
+    `SELECT ?u ?n WHERE { ?u a <${FOAF}Person> ; <${FOAF}name> ?n } ORDER BY ?n`));
+  state.users = new Map(rows.map((r) => [r.u.value, r.n.value]));
 
   const sel = $("#user-select");
   sel.innerHTML = rows.map((r) =>
