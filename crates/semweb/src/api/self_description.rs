@@ -39,6 +39,7 @@ pub async fn root(State(state): SharedState) -> Result<impl IntoResponse, (Statu
                 "events": "/events{?topic}",
                 "hub": "/hub",
                 "topics": topics_value(),
+                "didDocument": "/.well-known/did.json",
             },
         })),
     ))

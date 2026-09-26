@@ -20,11 +20,13 @@ mod health_metrics;
 mod hub_endpoints;
 mod manifest;
 mod mcp;
+mod did;
 mod self_description;
 mod sparql;
 mod ui;
 mod write;
 
+pub use did::did_document;
 pub use events::events;
 pub use fragments::fragments;
 pub use health_metrics::{health, metrics};

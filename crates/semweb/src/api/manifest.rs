@@ -97,4 +97,22 @@ pub(crate) async fn manifest_document(
             "events": "/events{?topic}",
         },
     }))
+    .map(|mut doc| {
+        // Trust layer (opt-in): sign the manifest so agents can verify
+        // before use. The proof covers the whole document (Data Integrity
+        // over canonical JSON); the verifying key is served at
+        // /.well-known/did.json. Unsigned deployments are byte-identical
+        // to the pre-trust surface.
+        if let Some(signing) = &state.signing {
+            doc["issuer"] = json!(signing.did);
+            doc["trust"] = json!({
+                "cryptosuite": crate::trust::CRYPTOSUITE,
+                "verificationMethod": format!("{}#key-1", signing.did),
+                "didDocument": "/.well-known/did.json",
+                "verifyWith": "the verify_claim MCP tool, or any Data Integrity verifier",
+            });
+            crate::trust::attach_proof(&mut doc, signing);
+        }
+        doc
+    })
 }

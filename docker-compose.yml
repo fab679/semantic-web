@@ -64,6 +64,15 @@ services:
       # Subscription-secret encryption at rest (recommended). 32 random
       # bytes, hex. `openssl rand -hex 32`.
       SEMWEB_SECRET_KEY: 5f4d3c2b1a0987654321fedcba9876543210fedcba9876543210abcdef123456
+      # Trust layer (opt-in): signs the manifest; the verifying key is
+      # served at /.well-known/did.json and readers verify with the
+      # verify_claim machine tool (see docs/trust.md). Demo key --
+      # generate your own with `openssl rand -hex 32`. Unset = unsigned surface (unchanged behavior).
+      SEMWEB_SIGNING_KEY: ${SEMWEB_SIGNING_KEY:-7a3f5e9c1d8b4f2a6e0c9d5b8f1a3e7c2d4b6f8a0e9c1d3b5f7a9e1c3d5b7f9e}
+      SEMWEB_DID: ${SEMWEB_DID:-}
+      SEMWEB_TRUSTED_ISSUERS: ${SEMWEB_TRUSTED_ISSUERS:-}
+      SEMWEB_TRUSTED_ISSUERS_PATH: ${SEMWEB_TRUSTED_ISSUERS_PATH:-}
+      SEMWEB_REVOKED_CREDENTIAL_IDS: ${SEMWEB_REVOKED_CREDENTIAL_IDS:-}
       # Replica sharding: read SEMWEB_REPLICA_COUNT from the environment
       # (default 1). The `scale` profile's second replica fixes COUNT=2 /
       # INDEX=1, so `SEMWEB_REPLICA_COUNT=2 docker compose --profile scale up`
@@ -117,6 +126,8 @@ services:
       SEMWEB_SEED_PATH: /app/sample_data.ttl
       SEMWEB_WRITE_TOKEN: demo-write-token
       SEMWEB_SECRET_KEY: 5f4d3c2b1a0987654321fedcba9876543210fedcba9876543210abcdef123456
+      # Same signing identity as replica 0 so both replicas attest as one.
+      SEMWEB_SIGNING_KEY: ${SEMWEB_SIGNING_KEY:-7a3f5e9c1d8b4f2a6e0c9d5b8f1a3e7c2d4b6f8a0e9c1d3b5f7a9e1c3d5b7f9e}
       SEMWEB_REPLICA_COUNT: "2"
       SEMWEB_REPLICA_INDEX: "1"
       RUST_LOG: info

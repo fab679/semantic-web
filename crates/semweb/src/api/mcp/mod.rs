@@ -14,6 +14,9 @@
 //!                       cardinalities, descriptions, example queries)
 //!       get_topic       full topic content (data as NDJSON / schema JSON)
 //!       insert_triple   write path (honours the write token policy)
+//!       verify_claim    four-gate verification of a signed document
+//!                       (signature, issuer trust, temporal, revocation)
+//!       issue_attestation  mint a signed VC under this deployment's DID
 //!       subscribe       WebSub subscription on behalf of a callback URL
 //!   prompts/list, prompts/get -> guided-exploration prompt templates
 //!

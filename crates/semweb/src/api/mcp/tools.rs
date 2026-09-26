@@ -81,6 +81,41 @@ pub(crate) fn list() -> Value {
                 }
             },
             {
+                "name": "verify_claim",
+                "description": "Verify a signed document before use, using the four trust \
+                                gates: shape, signature, issuer-trust (against the local \
+                                registry + this deployment's identity), temporal window and \
+                                revocation/supersession. Accepts a VerifiableCredential, any \
+                                Data Integrity-signed JSON (e.g. the /manifest document, \
+                                which carries a proof when the deployment signs), or an \
+                                attestation issued via issue_attestation. Pass the whole \
+                                document as 'credential'.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "credential": { "type": "object", "description": "the signed JSON document (VC or proof-carrying document)" }
+                    },
+                    "required": ["credential"]
+                }
+            },
+            {
+                "name": "issue_attestation",
+                "description": "Issue a signed VerifiableCredential attesting a claim under \
+                                this deployment's DID (only when SEMWEB_SIGNING_KEY is \
+                                configured). Available for minting provenance metadata, \
+                                e.g. superseding a stale attestation.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "claim": { "type": "object", "description": "credentialSubject payload" },
+                        "id": { "type": "string", "description": "credential id, e.g. urn:claim:1 (optional)" },
+                        "valid_until": { "type": "string", "description": "RFC3339 expiry (optional)" },
+                        "supersedes": { "type": "string", "description": "credential id this one replaces (optional)" }
+                    },
+                    "required": ["claim"]
+                }
+            },
+            {
                 "name": "subscribe",
                 "description": "Subscribe a callback URL to WebSub push notifications for \
                                 '/topics/data' or '/topics/schema'. The callback must be a \
@@ -110,6 +145,8 @@ pub(crate) async fn call(state: &AppState, params: &Value) -> Value {
         "get_manifest" => get_manifest(state).await,
         "get_topic" => get_topic(state, &args).await,
         "insert_triple" => insert_triple(state, &args).await,
+        "verify_claim" => verify_claim(state, &args),
+        "issue_attestation" => issue_attestation(state, &args),
         "subscribe" => subscribe(state, &args).await,
         other => super::tool_error(&format!("unknown tool: {other}")),
     };
@@ -244,6 +281,58 @@ async fn insert_triple(state: &AppState, args: &Value) -> Value {
         }
         Err((_, msg)) => super::tool_error(&msg),
     }
+}
+
+/// Four-gate verification (shape / signature / trust / temporal+revocation)
+/// against the local registry and this deployment's own identity. The
+/// verdict is returned as JSON: an agent reads the gates, not just a bool,
+/// and can reason about *why* something failed (spoofed issuer vs expired
+/// vs revoked).
+fn verify_claim(state: &AppState, args: &Value) -> Value {
+    let Some(credential) = args.get("credential") else {
+        return super::tool_error("credential is required (pass the whole signed document)");
+    };
+    if !credential.is_object() {
+        return super::tool_error("credential must be a JSON object (the whole signed document)");
+    }
+    let ctx = crate::trust::TrustContext {
+        registry: &state.trust,
+        self_identity: state.signing.as_ref(),
+        now: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0),
+    };
+    super::tool_text(
+        serde_json::to_string_pretty(&crate::trust::verify_document(credential, &ctx).to_json())
+            .unwrap_or_default(),
+    )
+}
+
+/// Mint a signed attestation under the deployment's DID (supports id,
+/// validUntil and supersedes -- see docs/trust.md). Error surface when
+/// the deployment does not sign.
+fn issue_attestation(state: &AppState, args: &Value) -> Value {
+    let Some(signing) = &state.signing else {
+        return super::tool_error(
+            "signing not configured (set SEMWEB_SIGNING_KEY to enable the trust layer)",
+        );
+    };
+    let Some(claim) = args.get("claim").filter(|c| c.is_object()) else {
+        return super::tool_error("claim is required (credentialSubject object)");
+    };
+    let vc = crate::trust::issue_credential(
+        signing,
+        claim.clone(),
+        args.get("valid_until")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        args.get("supersedes")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        args.get("id").and_then(Value::as_str).map(str::to_string),
+    );
+    super::tool_text(serde_json::to_string_pretty(&vc).unwrap_or_default())
 }
 
 async fn subscribe(state: &AppState, args: &Value) -> Value {

@@ -62,10 +62,45 @@ if curl -sf -X POST "$BASE/mcp" -H 'Content-Type: application/json' \
 say "MCP tools: list / call"
 if curl -sf -X POST "$BASE/mcp" -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}' \
-  | python3 -c 'import json,sys; ts=json.load(sys.stdin)["result"]["tools"]; assert len(ts)==6'; then check "mcp tools/list (6 tools)" 0; else check "mcp tools/list (6 tools)" 1; fi
+  | python3 -c 'import json,sys; ts=json.load(sys.stdin)["result"]["tools"]; assert len(ts)==8'; then check "mcp tools/list (8 tools)" 0; else check "mcp tools/list (8 tools)" 1; fi
 if curl -sf -X POST "$BASE/mcp" -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"search_graph","arguments":{"predicate":"http://schema.org/worksFor","limit":2}}}' \
   | python3 -c 'import json,sys; t=json.load(sys.stdin)["result"]["content"][0]["text"]; assert "worksFor" in t or "schema:worksFor" in t or "employer" in t'; then check "mcp tools/call search_graph" 0; else check "mcp tools/call search_graph" 1; fi
+
+say "trust: did:web document, signed manifest, verify_claim gates"
+if curl -sf "$BASE/.well-known/did.json" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["id"].startswith("did:web:")
+assert d["verificationMethod"][0]["publicKeyMultibase"].startswith("z6Mk")
+'; then check "did:web document" 0; else check "did:web document" 1; fi
+if curl -sf "$BASE/manifest" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+p=d["proof"]
+assert p["type"]=="DataIntegrityProof" and p["proofValue"].startswith("z")
+assert d["issuer"].startswith("did:web:")
+'; then check "manifest carries Data Integrity proof" 0; else check "manifest carries Data Integrity proof" 1; fi
+if python3 - <<'PY'
+import json, sys, urllib.request
+base = "http://localhost:8484"
+manifest = json.load(urllib.request.urlopen(f"{base}/manifest"))
+def verify(credential):
+    req = urllib.request.Request(
+        f"{base}/mcp",
+        data=json.dumps({"jsonrpc":"2.0","id":1,"method":"tools/call",
+                         "params":{"name":"verify_claim","arguments":{"credential":credential}}}).encode(),
+        headers={"Content-Type":"application/json"})
+    return json.loads(json.load(urllib.request.urlopen(req))["result"]["content"][0]["text"])
+ok = verify(manifest)["verified"] is True
+tampered = dict(manifest); tampered["schemaFingerprint"] = "sha256:evil"
+v = verify(tampered)
+ok = ok and v["verified"] is False and v["gates"]["signature"] is False
+v = verify({"issuer": manifest.get("issuer"), "says": "trust me"})
+ok = ok and v["verified"] is False
+sys.exit(0 if ok else 1)
+PY
+then check "verify_claim: accepts manifest, rejects tamper + spoof" 0; else check "verify_claim: accepts manifest, rejects tamper + spoof" 1; fi
 
 say "write auth + write path"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/admin/insert" -H 'Content-Type: application/json' \

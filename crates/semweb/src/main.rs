@@ -12,6 +12,7 @@ mod hub;
 mod jsonld;
 mod state;
 mod store;
+mod trust;
 mod util;
 
 use std::sync::Arc;
@@ -210,13 +211,14 @@ fn router(state: Arc<AppState>) -> axum::Router {
         .route("/metrics", get(api::metrics))
         .route("/hub", post(api::hub_post).get(api::hub_get))
         .route("/topics/{name}", get(api::topic))
+        .route("/.well-known/did.json", get(api::did_document))
         .route("/admin/insert", post(api::admin_insert))
         .layer(cors_layer())
         .with_state(state)
 }
 
-/// CORS for apps that live on other origins (the demo microblog,
-/// dashboards, third-party frontends). `SEMWEB_CORS_ORIGINS` is a
+/// CORS for apps that live on other origins (dashboards, third-party
+/// frontends, embedded views). `SEMWEB_CORS_ORIGINS` is a
 /// comma-separated allowlist; unset/empty = allow any origin (demo/dev
 /// posture — tighten it for a public deployment).
 fn cors_layer() -> tower_http::cors::CorsLayer {
