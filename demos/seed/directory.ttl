@@ -1,0 +1,49 @@
+# directory.ttl — the Directory app's world (service A, :8484).
+#
+# The Directory speaks the shared intersection vocabulary (foaf:name to
+# label, rdf:type to classify, rdfs:comment to describe) plus its own
+# terms: foaf:knows, schema:worksFor/employee, schema:foundingDate.
+# Other apps reference these URIs and resolve labels HERE — that is the
+# intersection in action.
+
+@prefix foaf:   <http://xmlns.com/foaf/0.1/> .
+@prefix schema: <http://schema.org/> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .
+@prefix ex:     <http://harborlight.example/people/> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+
+# What the terms MEAN (the manifest surfaces these live)
+foaf:Person rdfs:comment "A resident of Harborlight." ;
+    skos:definition "A person as described by the FOAF vocabulary." .
+foaf:Organization rdfs:comment "An organization based in the harbor." ;
+    skos:definition "A collective entity with members and employees." .
+foaf:knows rdfs:comment "A social link between two residents." .
+schema:worksFor rdfs:comment "The organization a person works for." .
+schema:foundingDate rdfs:comment "When the organization was founded." .
+
+# People — labeled with the SHARED foaf:name so every app can name them
+ex:alice a foaf:Person ; foaf:name "Alice Quayle" ;
+    foaf:knows ex:bob ; schema:worksFor ex:roastery .
+ex:bob a foaf:Person ; foaf:name "Bob Ferrer" ;
+    foaf:knows ex:carol ; schema:worksFor ex:roastery .
+ex:carol a foaf:Person ; foaf:name "Carol Marsh" ;
+    schema:worksFor ex:trading .
+ex:erin a foaf:Person ; foaf:name "Erin Locke" ;
+    foaf:knows ex:alice ; schema:worksFor ex:clinic .
+ex:marta a foaf:Person ; foaf:name "Marta Voss" ;
+    schema:worksFor ex:coop .
+
+# Organizations
+ex:roastery a foaf:Organization ; foaf:name "Harborlight Roastery" ;
+    schema:foundingDate "2001-04-03"^^xsd:date ;
+    schema:employee ex:alice , ex:bob .
+ex:trading a foaf:Organization ; foaf:name "Globex Trading" ;
+    schema:foundingDate "1988-11-20"^^xsd:date ;
+    schema:employee ex:carol .
+ex:coop a foaf:Organization ; foaf:name "Growers Co-op" ;
+    schema:foundingDate "1987-04-12"^^xsd:date ;
+    schema:employee ex:marta .
+ex:clinic a foaf:Organization ; foaf:name "Harbor Clinic" ;
+    schema:foundingDate "1994-09-01"^^xsd:date ;
+    schema:employee ex:erin .

@@ -1,0 +1,40 @@
+# market.ttl — the Market app's world (service B, :8485).
+#
+# The Market speaks its OWN ontology (mkt:) over schema:Product — and
+# labels products with the SHARED foaf:name. It references people-free
+# org URIs (sourcedFrom) that live in the DIRECTORY's store: the Market
+# app resolves those labels by querying Directory's fragments over HTTP.
+
+@prefix foaf:   <http://xmlns.com/foaf/0.1/> .
+@prefix schema: <http://schema.org/> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix mkt:    <http://harborlight.example/market#> .
+@prefix ex:     <http://harborlight.example/people/> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+
+# What the terms MEAN
+mkt:price rdfs:comment "Price per bag in EUR." .
+mkt:harvestDate rdfs:comment "When the green coffee was harvested." .
+mkt:certifiedBy rdfs:comment "The body that certified this lot." .
+mkt:sourcedFrom rdfs:comment "The organization this lot was sourced from." .
+
+# Products — foaf:name is the INTERSECTION: the same label predicate the
+# Directory uses for people, so one lookup convention names everything.
+mkt:lot7 a schema:Product ; foaf:name "Huila lot #7" ;
+    mkt:price "18.50"^^xsd:decimal ;
+    mkt:harvestDate "2025-11-02"^^xsd:date ;
+    mkt:sourcedFrom ex:coop ;
+    mkt:certifiedBy ex:certifier .
+mkt:lot9 a schema:Product ; foaf:name "Yirgacheffe lot #9" ;
+    mkt:price "21.00"^^xsd:decimal ;
+    mkt:harvestDate "2025-12-18"^^xsd:date ;
+    mkt:sourcedFrom ex:coop ;
+    mkt:certifiedBy ex:certifier .
+mkt:lot3 a schema:Product ; foaf:name "Sidamo lot #3" ;
+    mkt:price "16.75"^^xsd:decimal ;
+    mkt:harvestDate "2025-10-21"^^xsd:date ;
+    mkt:sourcedFrom ex:trading ;
+    mkt:certifiedBy ex:certifier .
+
+# The certifier lives in the Market's own world
+ex:certifier a foaf:Organization ; foaf:name "Coastal Certification Body" .

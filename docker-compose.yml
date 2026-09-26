@@ -40,12 +40,14 @@ services:
     build: .
     ports:
       - "8484:8000"
+    # Directory app world (people + orgs; the shared foaf:name labels live here)
+    volumes: [ "./demos/seed:/app/seed:ro" ]
     environment:
       SEMWEB_PORT: "8000"   # container-internal listener; host maps 8484->8000
       SEMWEB_SPARQL_ENDPOINT: http://oxigraph:7878/query
       SEMWEB_SPARQL_UPDATE: http://oxigraph:7878/update
       SEMWEB_PUBLIC_URL: http://localhost:8484
-      SEMWEB_SEED_PATH: /app/sample_data.ttl
+      SEMWEB_SEED_PATH: /app/seed/directory.ttl
       # Vocabulary: runtime prefixes for private namespaces + bare term
       # aliases (the "friendly names" layer -- operators choose, nothing
       # hardcoded). See docs/configuration.md.
@@ -82,6 +84,76 @@ services:
       RUST_LOG: info
     depends_on:
       - oxigraph
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:8000/"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # --- The multi-app federation demo ---------------------------------
+  # Three apps, three stores, three hubs. Each app speaks its own
+  # ontology; the shared intersection (foaf:name, rdf:type) is what lets
+  # them interoperate. See demos/README.md.
+
+  oxigraph-market:
+    image: ghcr.io/oxigraph/oxigraph:0.5.10
+    command: ["serve", "--location", "/data", "--bind", "0.0.0.0:7878"]
+    ports:
+      - "7879:7878"
+    volumes:
+      - oxigraph-market-data:/data
+
+  semantic-web-market:
+    build: .
+    ports:
+      - "8486:8000"
+    volumes: [ "./demos/seed:/app/seed:ro" ]
+    environment:
+      SEMWEB_PORT: "8000"
+      SEMWEB_SPARQL_ENDPOINT: http://oxigraph-market:7878/query
+      SEMWEB_SPARQL_UPDATE: http://oxigraph-market:7878/update
+      SEMWEB_PUBLIC_URL: http://localhost:8486
+      SEMWEB_SEED_PATH: /app/seed/market.ttl
+      # The Market's own ontology, as a runtime prefix (no recompile).
+      SEMWEB_EXTRA_PREFIXES: ${SEMWEB_MARKET_PREFIX:-mkt=http://harborlight.example/market#}
+      SEMWEB_WRITE_TOKEN: demo-write-token
+      SEMWEB_SECRET_KEY: 5f4d3c2b1a0987654321fedcba9876543210fedcba9876543210abcdef123456
+      SEMWEB_SIGNING_KEY: ${SEMWEB_MARKET_SIGNING_KEY:-2c4a6e8f0b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a}
+      RUST_LOG: info
+    depends_on:
+      - oxigraph-market
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:8000/"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  oxigraph-board:
+    image: ghcr.io/oxigraph/oxigraph:0.5.10
+    command: ["serve", "--location", "/data", "--bind", "0.0.0.0:7878"]
+    ports:
+      - "7880:7878"
+    volumes:
+      - oxigraph-board-data:/data
+
+  semantic-web-board:
+    build: .
+    ports:
+      - "8487:8000"
+    volumes: [ "./demos/seed:/app/seed:ro" ]
+    environment:
+      SEMWEB_PORT: "8000"
+      SEMWEB_SPARQL_ENDPOINT: http://oxigraph-board:7878/query
+      SEMWEB_SPARQL_UPDATE: http://oxigraph-board:7878/update
+      SEMWEB_PUBLIC_URL: http://localhost:8487
+      SEMWEB_SEED_PATH: /app/seed/board.ttl
+      SEMWEB_EXTRA_PREFIXES: ${SEMWEB_BOARD_PREFIX:-brd=http://harborlight.example/board#}
+      SEMWEB_WRITE_TOKEN: demo-write-token
+      SEMWEB_SECRET_KEY: 5f4d3c2b1a0987654321fedcba9876543210fedcba9876543210abcdef123456
+      SEMWEB_SIGNING_KEY: ${SEMWEB_BOARD_SIGNING_KEY:-4e6c8a0f2b4d6e8a0c2e4a6c8e0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e68}
+      RUST_LOG: info
+    depends_on:
+      - oxigraph-board
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://127.0.0.1:8000/"]
       interval: 5s
@@ -137,3 +209,5 @@ services:
 
 volumes:
   oxigraph-data:
+  oxigraph-market-data:
+  oxigraph-board-data:

@@ -1,0 +1,33 @@
+# board.ttl — the Board app's world (service C, :8486).
+#
+# The Board speaks its OWN ontology (brd:) and OWNS none of the things it
+# talks about: mentions point at people in the Directory's store, about
+# points at products in the Market's store. Labels for those URIs are
+# resolved cross-service over plain HTTP — the intersection doing real work.
+
+@prefix foaf:   <http://xmlns.com/foaf/0.1/> .
+@prefix brd:    <http://harborlight.example/board#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix mkt:    <http://harborlight.example/market#> .
+@prefix ex:     <http://harborlight.example/people/> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+
+# What the terms MEAN
+brd:Post rdfs:comment "A post on the harbor signal board." .
+brd:body rdfs:comment "What the post says." .
+brd:postedAt rdfs:comment "When the post went up." .
+brd:mentions rdfs:comment "A resident named in this post." .
+brd:about rdfs:comment "The product this post is about." .
+
+# Posts — referencing OTHER apps' URIs (people from Directory, products
+# from Market). The Board store holds only the posts themselves.
+brd:p1 a brd:Post ; foaf:name "Cupping Friday" ;
+    brd:body "Cupping session for lot #7 this Friday at the roastery — Alice is hosting." ;
+    brd:postedAt "2026-09-20T09:15:00Z"^^xsd:dateTime ;
+    brd:mentions ex:alice ;
+    brd:about mkt:lot7 .
+brd:p2 a brd:Post ; foaf:name "Prices are up" ;
+    brd:body "New harvest prices for the December lots are on the market board." ;
+    brd:postedAt "2026-09-22T14:40:00Z"^^xsd:dateTime ;
+    brd:mentions ex:erin ;
+    brd:about mkt:lot9 .

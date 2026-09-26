@@ -7,7 +7,12 @@
 # Generated docs site (GitHub Pages builds it in CI)
 site/
 
-# Python (tutorial agent / local tooling)
+# Node demos (showcase + Harborlight apps)
+node_modules/
+dist/
+*.local
+
+# Python (local tooling)
 .venv/
 __pycache__/
 *.py[cod]
