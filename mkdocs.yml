@@ -1,5 +1,5 @@
 site_name: Streaming Semantic Fragments
-site_description: A live, agent-readable surface over RDF — Triple Pattern Fragments, live self-description, and WebSub push. Plain HTTP only.
+site_description: A standard way to put live data on the web — streamed fragments, live self-description, push notifications, verifiable provenance. Plain HTTP only.
 site_url: https://fab679.github.io/semantic-web
 repo_url: https://github.com/fab679/semantic-web
 repo_name: fabisch/semantic-web
@@ -28,26 +28,17 @@ theme:
 
 nav:
   - Start:
-      - Why this exists: index.md
-      - Concepts in plain language: concepts.md
-      - Quickstart: getting-started.md
-      - Demo app (Semblr microblog): microblog-demo.md
-  - For developers:
-      - Reading the graph: for-developers.md
-      - Federation (decentralized WebSub): federation.md
-      - API reference: api.md
-      - Real-time push (WebSub): websub-guide.md
-  - For agents:
-      - How agents use this: for-agents.md
-      - Agent tutorial (Together AI + MCP): agent-tutorial.md
-  - Reference:
-      - Verified claims: verification.md
-      - Complete feature list: features.md
-      - Configuration reference: configuration.md
-      - Architecture: architecture.md
-      - For engineering teams: engineering.md
-      - Scaling & production: scaling.md
+      - What this is: index.md
+      - The problem and the idea: what-it-is.md
+      - How it works: how-it-works.md
+      - What it enables: what-it-enables.md
+  - Standards:
+      - Standards implemented: standards.md
+      - Trust layer (provenance): trust.md
       - WebSub specification: WebSub.md
+  - Running it:
+      - Reference (endpoints + configuration): reference.md
+      - Operations: operations.md
 
 markdown_extensions:
   - admonition

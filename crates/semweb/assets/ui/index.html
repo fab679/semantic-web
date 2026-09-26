@@ -63,7 +63,7 @@ function renderManifest() {
   const prefixes = Object.entries(manifest.prefixes || {})
     .map(([p, u]) => `<code class="dim">${esc(p)}</code>`).join(" ");
   setMain(`
-    <section><h2>Agent manifest</h2>
+    <section><h2>Manifest</h2>
       <div class="dim">fingerprint ${esc(manifest.schemaFingerprint)} — computed live on every request; no build step anywhere.</div>
       <div class="row" style="margin-top:8px"><span class="dim">prefixes:</span> ${prefixes}</div>
     </section>

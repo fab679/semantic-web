@@ -1,10 +1,11 @@
 # sample_data.ttl
-# Seed dataset for the prototype, deliberately tiny: enough to exercise
-# every piece of the architecture (two classes, several predicates, a
-# multi-hop knowable chain, a typed literal, and one unclosed edge) without
-# burying the /fragments output under noise.
+# Example seed dataset, deliberately tiny: enough to exercise every piece
+# of the architecture (two classes, several predicates, a multi-hop
+# knowable chain, a typed literal, and one unclosed edge) without burying
+# the /fragments output under noise. Loaded by SEMWEB_SEED_PATH.
 #
-# The vocabularies used here map to the friendly names in context.py:
+# The vocabularies used here map to the friendly names configured in
+# docker-compose.yml (SEMWEB_TERM_ALIASES):
 #   foaf:name      -> "name"
 #   foaf:knows     -> "knows"
 #   foaf:Person    -> "Person"
@@ -19,8 +20,8 @@
 @prefix ex:     <http://example.org/> .
 @prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
 
-# Human descriptions -- what the agent manifest pulls live from
-# rdfs:comment / skos:definition so agents plan against what terms MEAN.
+# Human descriptions -- what the manifest pulls live from
+# rdfs:comment / skos:definition, so readers see what terms MEAN.
 foaf:Person rdfs:comment "A human being, alive, dead, undead, or fictional." ;
     skos:definition "A person as described by the FOAF vocabulary." .
 foaf:Organization rdfs:comment "An organization the people here work for." ;

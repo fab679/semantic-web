@@ -1,4 +1,4 @@
-# shapes.ttl -- SHACL shapes for the agent manifest demo.
+# shapes.ttl -- SHACL shapes surfaced by the manifest.
 #
 # Loaded into the SHAPES_GRAPH (SEMWEB_SHACL_PATH) and read live by
 # GET /manifest and POST /mcp: property shapes grouped by target class
